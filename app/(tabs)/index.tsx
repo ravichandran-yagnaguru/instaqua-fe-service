@@ -1,114 +1,55 @@
-import { View, Text, Button, Alert, Image, StyleSheet, Platform } from 'react-native';
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import * as geofire from 'geofire-common';
-import { 
-  query, 
-  orderBy, 
-  startAt, 
-  endAt, 
-  where,
+// (Stray useEffect removed; only useEffect inside HomeScreen remains)
+import { HelloWave } from "@/components/hello-wave";
+import ParallaxScrollView from "@/components/parallax-scroll-view";
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import {
   addDoc,
-  onSnapshot
-} from 'firebase/firestore';
-import { useState, useEffect } from 'react'; // To store the results
+  endAt,
+  onSnapshot,
+  orderBy,
+  query,
+  startAt,
+  where,
+} from "firebase/firestore";
+import * as geofire from "geofire-common";
+import { useEffect, useState } from "react"; // To store the results
+import {
+  Alert,
+  Button,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 // ... existing imports
 
 // 1. Import DB
-import { auth, db } from '@/firebaseConfig'; 
-import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import VendorHomeScreen from "@/components/VendorHomeScreen";
+import VendorOrderManager from "@/components/VendorOrderManager";
+import { auth, db } from "@/firebaseConfig";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 
-
-const VendorDashboard = ({ vendorId }: { vendorId: string }) => {
-  const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
-
-  useEffect(() => {
-    // 1. Listen for orders assigned to THIS vendor
-    const q = query(
-      collection(db, "orders"),
-      where("vendor.uid", "==", vendorId)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setIncomingOrders(orders);
-    });
-
-    return unsubscribe;
-  }, [vendorId]);
-
-  const updateStatus = async (orderId: string, newStatus: string) => {
-    try {
-      const orderRef = doc(db, "orders", orderId);
-      // 2. Update the status in Firestore
-      await setDoc(orderRef, { status: newStatus }, { merge: true });
-      Alert.alert("Updated", `Order marked as ${newStatus}`);
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
-
-  return (
-    <View style={{ padding: 20, backgroundColor: '#fffbe6', flex: 1 }}>
-      <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 20 }}>
-        Vendor Dashboard ({vendorId})
-      </Text>
-      
-      {incomingOrders.length === 0 && <Text>No orders yet...</Text>}
-
-      {incomingOrders.map((order) => (
-        <View key={order.id} style={{ 
-          padding: 15, 
-          marginBottom: 10, 
-          backgroundColor: 'white', 
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: '#ddd'
-        }}>
-          <Text style={{ fontWeight: 'bold' }}>Order: {order.id.slice(0,6)}</Text>
-          <Text>Customer: {order.customer?.phoneNumber || "Guest"}</Text>
-          <Text>Items: {order.items?.[0]?.name} (x{order.items?.[0]?.quantity})</Text>
-          <Text style={{ marginVertical: 5, color: 'blue', fontWeight: 'bold' }}>
-            Current Status: {order.status}
-          </Text>
-
-          {/* ACTION BUTTONS based on Lifecycle  */}
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            {order.status === 'CREATED' && (
-              <Button title="Accept Order" onPress={() => updateStatus(order.id, 'ACCEPTED')} />
-            )}
-            {order.status === 'ACCEPTED' && (
-              <Button title="Dispatch" color="orange" onPress={() => updateStatus(order.id, 'DISPATCHED')} />
-            )}
-            {order.status === 'DISPATCHED' && (
-              <Button title="Deliver" color="green" onPress={() => updateStatus(order.id, 'DELIVERED')} />
-            )}
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-};
 
 export default function HomeScreen() {
-
   const [nearbyVendors, setNearbyVendors] = useState<any[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
-  const [orderStatus, setOrderStatus] = useState<string>('');
-
-  // ... inside HomeScreen
+  const [orderStatus, setOrderStatus] = useState<string>("");
   const [isVendorMode, setIsVendorMode] = useState(false);
+  const [vendorTab, setVendorTab] = useState<'home' | 'orders'>('home');
   // We'll simulate being "vendor_test_1" (from our seed data)
   const currentVendorId = "vendor_test_1";
 
-  // Minimal Vendor Dashboard Component
+  // Ensure vendorTab is reset when exiting vendor mode
+  useEffect(() => {
+    if (!isVendorMode) {
+      setVendorTab('home');
+    }
+  }, [isVendorMode]);
 
+  // Minimal Vendor Dashboard Component
 
   const placeOrder = async (vendor: any) => {
     try {
@@ -127,31 +68,31 @@ export default function HomeScreen() {
         vendor: {
           uid: vendor.id, // The vendor we clicked on
           businessName: vendor.businessName,
-          location: vendor.location
+          location: vendor.location,
         },
-        status: 'CREATED',
+        status: "CREATED",
         items: [
           {
             productId: "can_20L",
             name: "20L Water Can",
             quantity: 2,
-            pricePerUnit: 40
-          }
+            pricePerUnit: 40,
+          },
         ],
         pricing: {
           itemTotal: 80,
           deliveryFee: 0, // We will calculate this later
-          totalAmount: 80
+          totalAmount: 80,
         },
         deliveryLocation: {
           // In real app, this is the customer's chosen address
           // For MVP, we just use the center point we used for discovery
-          coordinates: { 
-             latitude: 26.6406, 
-             longitude: -81.8723 
-          }
+          coordinates: {
+            latitude: 26.6406,
+            longitude: -81.8723,
+          },
         },
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
 
       // 2. Write to Firestore
@@ -160,8 +101,7 @@ export default function HomeScreen() {
 
       console.log("Order Placed! ID:", docRef.id);
       setActiveOrderId(docRef.id);
-      Alert.alert("Success", `Order ${docRef.id.slice(0,6)}... placed!`);
-      
+      Alert.alert("Success", `Order ${docRef.id.slice(0, 6)}... placed!`);
     } catch (error: any) {
       console.error("Order Error:", error);
       Alert.alert("Error", error.message);
@@ -186,8 +126,12 @@ export default function HomeScreen() {
       // 1. Create Auth User (Simulated)
       const dummyEmail = `testuser_${Date.now()}@instaqua.com`;
       const dummyPass = "password123";
-      
-      const userCredential = await createUserWithEmailAndPassword(auth, dummyEmail, dummyPass);
+
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        dummyEmail,
+        dummyPass
+      );
       const user = userCredential.user;
       console.log("Auth Created:", user.uid);
 
@@ -195,11 +139,11 @@ export default function HomeScreen() {
       // We use the same 'uid' from Auth to link them
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
-        role: 'customer', // Default role
+        role: "customer", // Default role
         email: dummyEmail,
         phoneNumber: "+15550000000", // Dummy phone for now
         createdAt: new Date().toISOString(),
-        isOnline: true
+        isOnline: true,
       });
 
       console.log("Firestore Profile Created!");
@@ -213,8 +157,8 @@ export default function HomeScreen() {
   const seedDatabase = async () => {
     try {
       // Center point: Fort Myers, FL
-      const center = [26.6406, -81.8723]; 
-      
+      const center = [26.6406, -81.8723];
+
       // Create 3 Dummy Vendors
       const vendors = [
         { name: "AquaPure Supplies", offset: [0, 0] }, // Exact center
@@ -227,15 +171,15 @@ export default function HomeScreen() {
         // Calculate simple offset for lat/lng
         const lat = center[0] + (v.offset[0] as number);
         const lng = center[1] + (v.offset[1] as number);
-        
+
         // CRITICAL: Generate Geohash
         const hash = geofire.geohashForLocation([lat, lng]);
 
-        const vendorId = `vendor_test_${i+1}`;
-        
+        const vendorId = `vendor_test_${i + 1}`;
+
         await setDoc(doc(db, "users", vendorId), {
           uid: vendorId,
-          role: 'vendor',
+          role: "vendor",
           businessName: v.name,
           isOnline: true,
           isVerified: true,
@@ -245,13 +189,13 @@ export default function HomeScreen() {
           activeHours: { start: "06:00", end: "22:00" },
           location: {
             geohash: hash,
-            coordinates: { 
-              latitude: lat, 
-              longitude: lng 
-            }
+            coordinates: {
+              latitude: lat,
+              longitude: lng,
+            },
           },
           phoneNumber: "+15550009999",
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
       }
 
@@ -266,7 +210,7 @@ export default function HomeScreen() {
   const findVendors = async () => {
     try {
       // 1. Simulate Customer Location (Same as seeding center)
-      const center = [26.6406, -81.8723]; 
+      const center = [26.6406, -81.8723];
       const radiusInKm = 50; // Large radius to ensure we find them for testing
 
       // 2. Get Geohash Bounds
@@ -277,10 +221,10 @@ export default function HomeScreen() {
       // 3. Create a Query for each "Bound" (usually 4-9 queries)
       for (const b of bounds) {
         const q = query(
-          collection(db, 'users'),
-          where('role', '==', 'vendor'), // Only get vendors
-          where('isOnline', '==', true), // Only online
-          orderBy('location.geohash'),   // Must order by geohash for range query
+          collection(db, "users"),
+          where("role", "==", "vendor"), // Only get vendors
+          where("isOnline", "==", true), // Only online
+          orderBy("location.geohash"), // Must order by geohash for range query
           startAt(b[0]),
           endAt(b[1])
         );
@@ -304,7 +248,7 @@ export default function HomeScreen() {
             matchingVendors.push({
               id: doc.id,
               ...doc.data(),
-              distance: distanceInKm // Save this to display in UI
+              distance: distanceInKm, // Save this to display in UI
             });
           }
         }
@@ -315,7 +259,6 @@ export default function HomeScreen() {
 
       setNearbyVendors(matchingVendors);
       console.log("Found Vendors:", matchingVendors.length);
-      
     } catch (error: any) {
       console.error("Discovery Error:", error);
       Alert.alert("Error", error.message);
@@ -342,38 +285,93 @@ export default function HomeScreen() {
     return () => unsubscribe();
   }, [activeOrderId]);
 
-  console.log("Render Cycle - Active Order:", activeOrderId, "Status:", orderStatus);
+  console.log(
+    "Render Cycle - Active Order:",
+    activeOrderId,
+    "Status:",
+    orderStatus
+  );
 
-if (isVendorMode) {
+  if (isVendorMode) {
     return (
-      <View style={{ flex: 1, padding: 50, backgroundColor: '#fff' }}>
-        {/* THE BACK BUTTON */}
-        <View style={{ marginBottom: 20 }}>
-          <Button 
-            title="⬅️ Back to Customer View" 
-            onPress={() => setIsVendorMode(false)} 
+      <View style={{ flex: 1, backgroundColor: '#f5f5f5', paddingTop: 50 }}>
+        {/* 1. TOP BAR: Back Button & Title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
+          <Button
+            title="Exit"
+            color="red"
+            onPress={() => {
+              setIsVendorMode(false);
+            }}
           />
+          <Text style={{ fontSize: 18, fontWeight: 'bold', marginLeft: 20 }}>
+            {vendorTab === 'home' ? 'My Shop' : 'Order Manager'}
+          </Text>
         </View>
 
-        {/* THE DASHBOARD */}
-        <VendorDashboard vendorId={currentVendorId} />
+        {/* 2. CONTENT AREA: Swaps based on tab */}
+        <View style={{ flex: 1 }}>
+          {vendorTab === 'home' ? (
+            <VendorHomeScreen userId={currentVendorId} /> 
+          ) : (
+            <VendorOrderManager vendorUid={currentVendorId} />
+          )}
+        </View>
+
+        {/* 3. BOTTOM NAVIGATION BAR */}
+        <View style={{ 
+          flexDirection: 'row', 
+          backgroundColor: 'white', 
+          borderTopWidth: 1, 
+          borderColor: '#ddd', 
+          paddingBottom: 20, // For iPhone Home Indicator
+          paddingTop: 10
+        }}>
+          <Pressable 
+            onPress={() => setVendorTab('home')}
+            style={{ flex: 1, alignItems: 'center' }}
+          >
+            <Text style={{ 
+              color: vendorTab === 'home' ? '#2196F3' : '#888', 
+              fontWeight: 'bold' 
+            }}>
+              🏠 Dashboard
+            </Text>
+          </Pressable>
+
+          <Pressable 
+            onPress={() => setVendorTab('orders')}
+            style={{ flex: 1, alignItems: 'center' }}
+          >
+            <Text style={{ 
+              color: vendorTab === 'orders' ? '#2196F3' : '#888', 
+              fontWeight: 'bold' 
+            }}>
+              📋 Orders
+            </Text>
+          </Pressable>
+        </View>
+
       </View>
     );
   }
 
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
+      headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
       headerImage={
         <Image
-          source={require('@/assets/images/partial-react-logo.png')}
+          source={require("@/assets/images/partial-react-logo.png")}
           style={styles.reactLogo}
         />
-      }>
-
+      }
+    >
       <ThemedView style={styles.titleContainer}>
         {/* ... existing header ... */}
-        <Button title="Dev: Switch to Vendor Mode" onPress={() => setIsVendorMode(true)} />
+        <Button
+          title="Dev: Switch to Vendor Mode"
+          onPress={() => setIsVendorMode(true)}
+        />
       </ThemedView>
 
       <ThemedView style={styles.titleContainer}>
@@ -394,40 +392,51 @@ if (isVendorMode) {
         <Button title="Find Nearby Vendors" onPress={findVendors} />
 
         {activeOrderId && (
-          <View style={{ 
-            marginTop: 20,
-            padding: 20, 
-            backgroundColor: '#000000', // PURE BLACK BACKGROUND
-            borderWidth: 4, 
-            borderColor: '#00FF00', // BRIGHT GREEN BORDER
-            borderRadius: 10
-          }}>
-            <Text style={{ 
-              color: '#00FF00', // BRIGHT GREEN TEXT
-              fontSize: 24, 
-              fontWeight: 'bold', 
-              textAlign: 'center'
-            }}>
+          <View
+            style={{
+              marginTop: 20,
+              padding: 20,
+              backgroundColor: "#000000", // PURE BLACK BACKGROUND
+              borderWidth: 4,
+              borderColor: "#00FF00", // BRIGHT GREEN BORDER
+              borderRadius: 10,
+            }}
+          >
+            <Text
+              style={{
+                color: "#00FF00", // BRIGHT GREEN TEXT
+                fontSize: 24,
+                fontWeight: "bold",
+                textAlign: "center",
+              }}
+            >
               STATUS: {orderStatus || "WAITING..."}
             </Text>
-            
-            <Text style={{ color: '#FFFFFF', textAlign: 'center', marginTop: 10 }}>
+
+            <Text
+              style={{ color: "#FFFFFF", textAlign: "center", marginTop: 10 }}
+            >
               Order ID: {activeOrderId}
             </Text>
           </View>
         )}
-        
+
         {/* Render the List */}
         {nearbyVendors.map((vendor) => (
-          <ThemedView key={vendor.id} style={{ 
-            padding: 10, 
-            marginVertical: 5, 
-            backgroundColor: '#f0f0f0', 
-            borderRadius: 8 
-          }}>
-            <ThemedText type="defaultSemiBold">{vendor.businessName}</ThemedText>
+          <ThemedView
+            key={vendor.id}
+            style={{
+              padding: 10,
+              marginVertical: 5,
+              backgroundColor: "#f0f0f0",
+              borderRadius: 8,
+            }}
+          >
+            <ThemedText type="defaultSemiBold">
+              {vendor.businessName}
+            </ThemedText>
             <ThemedText>{vendor.distance.toFixed(2)} km away</ThemedText>
-            <ThemedText style={{ color: 'green' }}>
+            <ThemedText style={{ color: "green" }}>
               Stock: {vendor.inventoryCount} cans
             </ThemedText>
           </ThemedView>
@@ -435,33 +444,36 @@ if (isVendorMode) {
       </ThemedView>
 
       {/* Render the List */}
-        {nearbyVendors.map((vendor) => (
-          <ThemedView key={vendor.id} style={{ 
-            padding: 15, 
-            marginVertical: 8, 
-            backgroundColor: '#e0e0e0', // Slightly darker to pop
+      {nearbyVendors.map((vendor) => (
+        <ThemedView
+          key={vendor.id}
+          style={{
+            padding: 15,
+            marginVertical: 8,
+            backgroundColor: "#e0e0e0", // Slightly darker to pop
             borderRadius: 8,
-            gap: 5
-          }}>
-            <ThemedText type="defaultSemiBold">{vendor.businessName}</ThemedText>
-            <ThemedText>{vendor.distance.toFixed(2)} km away</ThemedText>
-            
-            {/* THE NEW ACTION BUTTON */}
-            <Button 
-              title="Order 2 Cans ($80)" 
-              onPress={() => placeOrder(vendor)} 
-              color="#2196F3"
-            />
-          </ThemedView>
-        ))}
+            gap: 5,
+          }}
+        >
+          <ThemedText type="defaultSemiBold">{vendor.businessName}</ThemedText>
+          <ThemedText>{vendor.distance.toFixed(2)} km away</ThemedText>
+
+          {/* THE NEW ACTION BUTTON */}
+          <Button
+            title="Order 2 Cans ($80)"
+            onPress={() => placeOrder(vendor)}
+            color="#2196F3"
+          />
+        </ThemedView>
+      ))}
     </ParallaxScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   stepContainer: {
@@ -473,6 +485,6 @@ const styles = StyleSheet.create({
     width: 290,
     bottom: 0,
     left: 0,
-    position: 'absolute',
+    position: "absolute",
   },
 });
