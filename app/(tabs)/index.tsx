@@ -1,38 +1,33 @@
+import { useRouter } from "expo-router";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  doc,
+  endAt,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  startAt,
+  where,
+} from "firebase/firestore";
+import * as geofire from "geofire-common";
 import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  Alert,
   Button,
   ScrollView,
+  Text,
   TouchableOpacity,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Image,
+  View
 } from "react-native";
-import {
-  collection,
-  addDoc,
-  doc,
-  setDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  startAt,
-  endAt,
-  onSnapshot,
-} from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import * as geofire from "geofire-common";
 
 // Local Imports
-import { db, auth } from "@/firebaseConfig";
 import AddressManager from "@/components/AddressManager";
-import VendorHomeScreen from "@/components/VendorHomeScreen";
-import VendorOrderManager from "@/components/VendorOrderManager";
 import CheckoutModal from "@/components/CheckoutModal";
-import CustomerOrderHistory from "@/components/CustomerOrderHistory";
+import { auth, db } from "@/firebaseConfig";
 
 export default function HomeScreen() {
   // --- STATE ---
@@ -40,13 +35,14 @@ export default function HomeScreen() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [orderStatus, setOrderStatus] = useState<string>("");
-  const [isVendorMode, setIsVendorMode] = useState(false);
-  const [vendorTab, setVendorTab] = useState<"home" | "orders">("home");
+  // Removed isVendorMode and vendorTab state
   const [currentAddress, setCurrentAddress] = useState<any>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  // Removed showHistory state
+  const router = useRouter();
+  const [userRole, setUserRole] = useState<"customer" | "vendor">("customer");
 
   // We'll simulate being "vendor_test_1"
-  const currentVendorId = "vendor_test_1";
+  // const currentVendorId = "vendor_test_1";
 
   const testSignUp = async () => {
     try {
@@ -66,7 +62,7 @@ export default function HomeScreen() {
       // We use the same 'uid' from Auth to link them
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
-        role: "customer", // Default role
+        role: "vendor", // Default role
         email: dummyEmail,
         phoneNumber: "+15550000000", // Dummy phone for now
         createdAt: new Date().toISOString(),
@@ -93,12 +89,7 @@ export default function HomeScreen() {
     }
   }, [currentAddress]);
 
-  // 2. Reset Vendor Tab on exit
-  useEffect(() => {
-    if (!isVendorMode) {
-      setVendorTab("home");
-    }
-  }, [isVendorMode]);
+  // Removed vendor tab reset effect
 
   // 3. Real-time Order Listener
   useEffect(() => {
@@ -112,6 +103,25 @@ export default function HomeScreen() {
     });
     return () => unsubscribe();
   }, [activeOrderId]);
+
+  useEffect(() => {
+    if (auth.currentUser) {
+      // Fetch the user's profile to see their role
+      const fetchRole = async () => {
+        const docSnap = await getDocs(
+          query(
+            collection(db, "users"),
+            where("uid", "==", auth.currentUser?.uid)
+          )
+        );
+        if (!docSnap.empty) {
+          const userData = docSnap.docs[0].data();
+          setUserRole(userData.role); // 'vendor' or 'customer'
+        }
+      };
+      fetchRole();
+    }
+  }, [auth.currentUser]);
 
   // --- LOGIC ---
 
@@ -265,138 +275,7 @@ export default function HomeScreen() {
     }
   };
 
-  // --- RENDER: VENDOR MODE ---
-  if (isVendorMode) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#f5f5f5" }}>
-        {/* 1. FIXED HEADER (Increased Safe Area Padding) */}
-        <View
-          style={{
-            paddingTop: 60, // Increased from 50 to clear status bar
-            paddingBottom: 15,
-            paddingHorizontal: 20,
-            backgroundColor: "white",
-            borderBottomWidth: 1,
-            borderColor: "#e0e0e0",
-            flexDirection: "row",
-            alignItems: "center",
-            // Shadow for depth
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.1,
-            shadowRadius: 3,
-            elevation: 4,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setIsVendorMode(false)}
-            style={{
-              backgroundColor: "#ffebee", // Light red background
-              paddingVertical: 8,
-              paddingHorizontal: 12,
-              borderRadius: 8,
-              marginRight: 15,
-            }}
-          >
-            <Text
-              style={{ color: "#d32f2f", fontWeight: "bold", fontSize: 14 }}
-            >
-              ← Exit
-            </Text>
-          </TouchableOpacity>
 
-          <Text style={{ fontSize: 18, fontWeight: "bold", color: "#333" }}>
-            {vendorTab === "home" ? "My Shop" : "Order Manager"}
-          </Text>
-        </View>
-
-        {/* 2. CONTENT AREA */}
-        <View style={{ flex: 1 }}>
-          {vendorTab === "home" ? (
-            <VendorHomeScreen userId={currentVendorId} />
-          ) : (
-            <VendorOrderManager vendorUid={currentVendorId} />
-          )}
-        </View>
-
-        {/* 3. BOTTOM NAVIGATION BAR */}
-        <View
-          style={{
-            flexDirection: "row",
-            backgroundColor: "white",
-            borderTopWidth: 1,
-            borderColor: "#ddd",
-            paddingBottom: 30,
-            paddingTop: 15,
-          }}
-        >
-          <Pressable
-            onPress={() => setVendorTab("home")}
-            style={{ flex: 1, alignItems: "center" }}
-          >
-            <Text style={{ fontSize: 24 }}>🏠</Text>
-            <Text
-              style={{
-                color: vendorTab === "home" ? "#2196F3" : "#888",
-                fontWeight: "bold",
-                fontSize: 12,
-                marginTop: 4,
-              }}
-            >
-              Dashboard
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setVendorTab("orders")}
-            style={{ flex: 1, alignItems: "center" }}
-          >
-            <Text style={{ fontSize: 24 }}>📋</Text>
-            <Text
-              style={{
-                color: vendorTab === "orders" ? "#2196F3" : "#888",
-                fontWeight: "bold",
-                fontSize: 12,
-                marginTop: 4,
-              }}
-            >
-              Orders
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  // --- RENDER: ORDER HISTORY ---
-  if (showHistory) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
-        {/* Simple Header with Back Button */}
-        <View
-          style={{
-            paddingTop: 60,
-            paddingBottom: 15,
-            paddingHorizontal: 20,
-            backgroundColor: "white",
-            borderBottomWidth: 1,
-            borderColor: "#eee",
-            flexDirection: "row",
-            alignItems: "center",
-          }}
-        >
-          <Button title="← Back" onPress={() => setShowHistory(false)} />
-          <Text style={{ fontSize: 20, fontWeight: "bold", marginLeft: 20 }}>
-            My Orders
-          </Text>
-        </View>
-
-        {/* The Component Copilot built */}
-        <View style={{ flex: 1, padding: 20 }}>
-          <CustomerOrderHistory />
-        </View>
-      </View>
-    );
-  }
 
   // --- RENDER: CUSTOMER HOME ---
   return (
@@ -445,7 +324,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
         <TouchableOpacity
-          onPress={() => setShowHistory(true)}
+          onPress={() => router.push("/customer/history")}
           style={{
             backgroundColor: "#e3f2fd",
             padding: 10,
@@ -560,7 +439,7 @@ export default function HomeScreen() {
                         }}
                       >
                         {vendor.inventoryCount > 0
-                          ? `✓ In Stock (${vendor.inventoryCount} cans)`
+                          ? `✓ In Stock`
                           : "❌ Out of Stock"}
                       </Text>
                     </View>
@@ -620,9 +499,9 @@ export default function HomeScreen() {
           />
           <View style={{ height: 10 }} />
           <Button
-            title="Switch to Vendor Mode"
+            title="Go to Vendor Dashboard"
+            onPress={() => router.push("/vendor/dashboard")}
             color="#ef6c00"
-            onPress={() => setIsVendorMode(true)}
           />
           <View style={{ height: 10 }} />
           <Button
