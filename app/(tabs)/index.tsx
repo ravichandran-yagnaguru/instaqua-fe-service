@@ -1,138 +1,53 @@
-import {
-  View,
-  Text,
-  Button,
-  Alert,
-  Image,
-  StyleSheet,
-  Platform,
-} from "react-native";
+// (Stray useEffect removed; only useEffect inside HomeScreen remains)
 import { HelloWave } from "@/components/hello-wave";
 import ParallaxScrollView from "@/components/parallax-scroll-view";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import * as geofire from "geofire-common";
 import {
-  query,
-  orderBy,
-  startAt,
-  endAt,
-  where,
   addDoc,
+  endAt,
   onSnapshot,
+  orderBy,
+  query,
+  startAt,
+  where,
 } from "firebase/firestore";
-import { useState, useEffect } from "react"; // To store the results
+import * as geofire from "geofire-common";
+import { useEffect, useState } from "react"; // To store the results
+import {
+  Alert,
+  Button,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 // ... existing imports
 
 // 1. Import DB
-import { auth, db } from "@/firebaseConfig";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import VendorHomeScreen from "@/components/VendorHomeScreen";
+import VendorOrderManager from "@/components/VendorOrderManager";
+import { auth, db } from "@/firebaseConfig";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 
-const VendorDashboard = ({ vendorId }: { vendorId: string }) => {
-  const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
-
-  useEffect(() => {
-    // 1. Listen for orders assigned to THIS vendor
-    const q = query(
-      collection(db, "orders"),
-      where("vendor.uid", "==", vendorId)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orders = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setIncomingOrders(orders);
-    });
-
-    return unsubscribe;
-  }, [vendorId]);
-
-  const updateStatus = async (orderId: string, newStatus: string) => {
-    try {
-      const orderRef = doc(db, "orders", orderId);
-      // 2. Update the status in Firestore
-      await setDoc(orderRef, { status: newStatus }, { merge: true });
-      Alert.alert("Updated", `Order marked as ${newStatus}`);
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
-
-  return (
-    <View style={{ padding: 20, backgroundColor: "#fffbe6", flex: 1 }}>
-      <Text style={{ fontSize: 24, fontWeight: "bold", marginBottom: 20 }}>
-        Vendor Dashboard ({vendorId})
-      </Text>
-
-      {incomingOrders.length === 0 && <Text>No orders yet...</Text>}
-
-      {incomingOrders.map((order) => (
-        <View
-          key={order.id}
-          style={{
-            padding: 15,
-            marginBottom: 10,
-            backgroundColor: "white",
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: "#ddd",
-          }}
-        >
-          <Text style={{ fontWeight: "bold" }}>
-            Order: {order.id.slice(0, 6)}
-          </Text>
-          <Text>Customer: {order.customer?.phoneNumber || "Guest"}</Text>
-          <Text>
-            Items: {order.items?.[0]?.name} (x{order.items?.[0]?.quantity})
-          </Text>
-          <Text
-            style={{ marginVertical: 5, color: "blue", fontWeight: "bold" }}
-          >
-            Current Status: {order.status}
-          </Text>
-
-          {/* ACTION BUTTONS based on Lifecycle  */}
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-            {order.status === "CREATED" && (
-              <Button
-                title="Accept Order"
-                onPress={() => updateStatus(order.id, "ACCEPTED")}
-              />
-            )}
-            {order.status === "ACCEPTED" && (
-              <Button
-                title="Dispatch"
-                color="orange"
-                onPress={() => updateStatus(order.id, "DISPATCHED")}
-              />
-            )}
-            {order.status === "DISPATCHED" && (
-              <Button
-                title="Deliver"
-                color="green"
-                onPress={() => updateStatus(order.id, "DELIVERED")}
-              />
-            )}
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-};
 
 export default function HomeScreen() {
   const [nearbyVendors, setNearbyVendors] = useState<any[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [orderStatus, setOrderStatus] = useState<string>("");
-
-  // ... inside HomeScreen
   const [isVendorMode, setIsVendorMode] = useState(false);
+  const [vendorTab, setVendorTab] = useState<'home' | 'orders'>('home');
   // We'll simulate being "vendor_test_1" (from our seed data)
   const currentVendorId = "vendor_test_1";
+
+  // Ensure vendorTab is reset when exiting vendor mode
+  useEffect(() => {
+    if (!isVendorMode) {
+      setVendorTab('home');
+    }
+  }, [isVendorMode]);
 
   // Minimal Vendor Dashboard Component
 
@@ -378,7 +293,67 @@ export default function HomeScreen() {
   );
 
   if (isVendorMode) {
-    return <VendorHomeScreen userId={currentVendorId} />;
+    return (
+      <View style={{ flex: 1, backgroundColor: '#f5f5f5', paddingTop: 50 }}>
+        {/* 1. TOP BAR: Back Button & Title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
+          <Button
+            title="Exit"
+            color="red"
+            onPress={() => {
+              setIsVendorMode(false);
+            }}
+          />
+          <Text style={{ fontSize: 18, fontWeight: 'bold', marginLeft: 20 }}>
+            {vendorTab === 'home' ? 'My Shop' : 'Order Manager'}
+          </Text>
+        </View>
+
+        {/* 2. CONTENT AREA: Swaps based on tab */}
+        <View style={{ flex: 1 }}>
+          {vendorTab === 'home' ? (
+            <VendorHomeScreen userId={currentVendorId} /> 
+          ) : (
+            <VendorOrderManager vendorUid={currentVendorId} />
+          )}
+        </View>
+
+        {/* 3. BOTTOM NAVIGATION BAR */}
+        <View style={{ 
+          flexDirection: 'row', 
+          backgroundColor: 'white', 
+          borderTopWidth: 1, 
+          borderColor: '#ddd', 
+          paddingBottom: 20, // For iPhone Home Indicator
+          paddingTop: 10
+        }}>
+          <Pressable 
+            onPress={() => setVendorTab('home')}
+            style={{ flex: 1, alignItems: 'center' }}
+          >
+            <Text style={{ 
+              color: vendorTab === 'home' ? '#2196F3' : '#888', 
+              fontWeight: 'bold' 
+            }}>
+              🏠 Dashboard
+            </Text>
+          </Pressable>
+
+          <Pressable 
+            onPress={() => setVendorTab('orders')}
+            style={{ flex: 1, alignItems: 'center' }}
+          >
+            <Text style={{ 
+              color: vendorTab === 'orders' ? '#2196F3' : '#888', 
+              fontWeight: 'bold' 
+            }}>
+              📋 Orders
+            </Text>
+          </Pressable>
+        </View>
+
+      </View>
+    );
   }
 
   return (
