@@ -1,125 +1,52 @@
-// (Stray useEffect removed; only useEffect inside HomeScreen remains)
-import { HelloWave } from "@/components/hello-wave";
-import ParallaxScrollView from "@/components/parallax-scroll-view";
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
+import { useEffect, useState } from "react";
 import {
-  addDoc,
-  endAt,
-  onSnapshot,
-  orderBy,
-  query,
-  startAt,
-  where,
-} from "firebase/firestore";
-import * as geofire from "geofire-common";
-import { useEffect, useState } from "react"; // To store the results
-import {
-  Alert,
+  View,
+  Text,
   Button,
-  Image,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
   Pressable,
   StyleSheet,
-  Text,
-  View
+  Image,
 } from "react-native";
-// ... existing imports
+import {
+  collection,
+  addDoc,
+  doc,
+  setDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  startAt,
+  endAt,
+  onSnapshot,
+} from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import * as geofire from "geofire-common";
 
-// 1. Import DB
+// Local Imports
+import { db, auth } from "@/firebaseConfig";
+import AddressManager from "@/components/AddressManager";
 import VendorHomeScreen from "@/components/VendorHomeScreen";
 import VendorOrderManager from "@/components/VendorOrderManager";
-import { auth, db } from "@/firebaseConfig";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
-
+import CheckoutModal from "@/components/CheckoutModal";
+import CustomerOrderHistory from "@/components/CustomerOrderHistory";
 
 export default function HomeScreen() {
+  // --- STATE ---
   const [nearbyVendors, setNearbyVendors] = useState<any[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [orderStatus, setOrderStatus] = useState<string>("");
   const [isVendorMode, setIsVendorMode] = useState(false);
-  const [vendorTab, setVendorTab] = useState<'home' | 'orders'>('home');
-  // We'll simulate being "vendor_test_1" (from our seed data)
+  const [vendorTab, setVendorTab] = useState<"home" | "orders">("home");
+  const [currentAddress, setCurrentAddress] = useState<any>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // We'll simulate being "vendor_test_1"
   const currentVendorId = "vendor_test_1";
-
-  // Ensure vendorTab is reset when exiting vendor mode
-  useEffect(() => {
-    if (!isVendorMode) {
-      setVendorTab('home');
-    }
-  }, [isVendorMode]);
-
-  // Minimal Vendor Dashboard Component
-
-  const placeOrder = async (vendor: any) => {
-    try {
-      if (!auth.currentUser) {
-        Alert.alert("Error", "You must be logged in to order!");
-        return;
-      }
-
-      // 1. Construct the Order Object (MVP Schema)
-      // We hardcode 2 cans for now to test the flow
-      const orderPayload = {
-        customer: {
-          uid: auth.currentUser.uid,
-          phoneNumber: "+15550000000", // In real app, fetch from profile
-        },
-        vendor: {
-          uid: vendor.id, // The vendor we clicked on
-          businessName: vendor.businessName,
-          location: vendor.location,
-        },
-        status: "CREATED",
-        items: [
-          {
-            productId: "can_20L",
-            name: "20L Water Can",
-            quantity: 2,
-            pricePerUnit: 40,
-          },
-        ],
-        pricing: {
-          itemTotal: 80,
-          deliveryFee: 0, // We will calculate this later
-          totalAmount: 80,
-        },
-        deliveryLocation: {
-          // In real app, this is the customer's chosen address
-          // For MVP, we just use the center point we used for discovery
-          coordinates: {
-            latitude: 26.6406,
-            longitude: -81.8723,
-          },
-        },
-        createdAt: new Date().toISOString(),
-      };
-
-      // 2. Write to Firestore
-      // "addDoc" automatically creates a unique Order ID
-      const docRef = await addDoc(collection(db, "orders"), orderPayload);
-
-      console.log("Order Placed! ID:", docRef.id);
-      setActiveOrderId(docRef.id);
-      Alert.alert("Success", `Order ${docRef.id.slice(0, 6)}... placed!`);
-    } catch (error: any) {
-      console.error("Order Error:", error);
-      Alert.alert("Error", error.message);
-    }
-  };
-
-  // 2. Add Test Logic
-  const testConnection = async () => {
-    try {
-      // Attempt to read a dummy collection
-      await getDocs(collection(db, "test_connection"));
-      console.log("Connection Successful!");
-      Alert.alert("Success", "Connected to Firebase!");
-    } catch (error: any) {
-      console.error("Connection Error:", error);
-      Alert.alert("Error", error.message);
-    }
-  };
 
   const testSignUp = async () => {
     try {
@@ -147,34 +74,171 @@ export default function HomeScreen() {
       });
 
       console.log("Firestore Profile Created!");
-      Alert.alert("Success", "User Created & Saved to DB!");
+      Alert.alert(
+        "Success",
+        "User Created & Saved to DB! You can now use location."
+      );
     } catch (error: any) {
       console.error("Sign Up Error:", error);
       Alert.alert("Error", error.message);
     }
   };
 
+  // --- EFFECTS ---
+
+  // 1. Auto-Search: When address changes, find vendors automatically
+  useEffect(() => {
+    if (currentAddress) {
+      findVendors();
+    }
+  }, [currentAddress]);
+
+  // 2. Reset Vendor Tab on exit
+  useEffect(() => {
+    if (!isVendorMode) {
+      setVendorTab("home");
+    }
+  }, [isVendorMode]);
+
+  // 3. Real-time Order Listener
+  useEffect(() => {
+    if (!activeOrderId) return;
+    const orderRef = doc(db, "orders", activeOrderId);
+    const unsubscribe = onSnapshot(orderRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        setOrderStatus(data.status);
+      }
+    });
+    return () => unsubscribe();
+  }, [activeOrderId]);
+
+  // --- LOGIC ---
+
+  const findVendors = async () => {
+    try {
+      if (!currentAddress) return;
+
+      const center = [
+        currentAddress.coordinates.latitude,
+        currentAddress.coordinates.longitude,
+      ];
+      const radiusInKm = 50;
+      const bounds = geofire.geohashQueryBounds(center, radiusInKm * 1000);
+      const promises = [];
+
+      for (const b of bounds) {
+        const q = query(
+          collection(db, "users"),
+          where("role", "==", "vendor"),
+          where("isOnline", "==", true),
+          orderBy("location.geohash"),
+          startAt(b[0]),
+          endAt(b[1])
+        );
+        promises.push(getDocs(q));
+      }
+
+      const snapshots = await Promise.all(promises);
+      const matchingVendors: any[] = [];
+
+      for (const snap of snapshots) {
+        for (const doc of snap.docs) {
+          const lat = doc.data().location.coordinates.latitude;
+          const lng = doc.data().location.coordinates.longitude;
+          const distanceInKm = geofire.distanceBetween([lat, lng], center);
+
+          if (distanceInKm <= radiusInKm) {
+            matchingVendors.push({
+              id: doc.id,
+              ...doc.data(),
+              distance: distanceInKm,
+            });
+          }
+        }
+      }
+      matchingVendors.sort((a, b) => a.distance - b.distance);
+      setNearbyVendors(matchingVendors);
+    } catch (error: any) {
+      console.error("Discovery Error:", error);
+      // Don't alert on every auto-search failure, just log it
+    }
+  };
+
+  const placeOrder = async (orderDetails: {
+    quantity: number;
+    itemTotal: number;
+    deliveryFee: number;
+    grandTotal: number;
+  }) => {
+    try {
+      if (!auth.currentUser) {
+        Alert.alert("Error", "You must be logged in to order!");
+        return;
+      }
+      if (!selectedVendor) {
+        Alert.alert("Error", "No vendor selected!");
+        return;
+      }
+
+      const orderPayload = {
+        customer: {
+          uid: auth.currentUser.uid,
+          phoneNumber: "+15550000000",
+        },
+        vendor: {
+          uid: selectedVendor.id,
+          businessName: selectedVendor.businessName,
+          location: selectedVendor.location,
+        },
+        status: "CREATED",
+        items: [
+          {
+            productId: "can_20L",
+            name: "20L Water Can",
+            quantity: orderDetails.quantity,
+            pricePerUnit: 40,
+          },
+        ],
+        pricing: {
+          itemTotal: orderDetails.itemTotal,
+          deliveryFee: orderDetails.deliveryFee,
+          totalAmount: orderDetails.grandTotal,
+        },
+        deliveryLocation: {
+          coordinates: {
+            latitude: currentAddress?.coordinates.latitude || 26.6406,
+            longitude: currentAddress?.coordinates.longitude || -81.8723,
+          },
+          address: currentAddress?.fullAddress || "Unknown",
+        },
+        createdAt: new Date().toISOString(),
+      };
+
+      const docRef = await addDoc(collection(db, "orders"), orderPayload);
+      setActiveOrderId(docRef.id);
+      setSelectedVendor(null);
+      Alert.alert("Success", `Order placed!`);
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    }
+  };
+
+  // --- DEBUG FUNCTIONS (Hidden in UI) ---
   const seedDatabase = async () => {
     try {
-      // Center point: Fort Myers, FL
       const center = [26.6406, -81.8723];
-
-      // Create 3 Dummy Vendors
       const vendors = [
-        { name: "AquaPure Supplies", offset: [0, 0] }, // Exact center
-        { name: "Blue Wave Water", offset: [0.01, 0.01] }, // ~1.5km away
-        { name: "Hydra Point", offset: [-0.02, -0.02] }, // ~3km away
+        { name: "AquaPure Supplies", offset: [0, 0] },
+        { name: "Blue Wave Water", offset: [0.01, 0.01] },
+        { name: "Hydra Point", offset: [-0.02, -0.02] },
       ];
 
       for (let i = 0; i < vendors.length; i++) {
         const v = vendors[i];
-        // Calculate simple offset for lat/lng
         const lat = center[0] + (v.offset[0] as number);
         const lng = center[1] + (v.offset[1] as number);
-
-        // CRITICAL: Generate Geohash
         const hash = geofire.geohashForLocation([lat, lng]);
-
         const vendorId = `vendor_test_${i + 1}`;
 
         await setDoc(doc(db, "users", vendorId), {
@@ -189,302 +253,393 @@ export default function HomeScreen() {
           activeHours: { start: "06:00", end: "22:00" },
           location: {
             geohash: hash,
-            coordinates: {
-              latitude: lat,
-              longitude: lng,
-            },
+            coordinates: { latitude: lat, longitude: lng },
           },
           phoneNumber: "+15550009999",
           createdAt: new Date().toISOString(),
         });
       }
-
-      console.log("Vendors Seeded!");
-      Alert.alert("Success", "3 Dummy Vendors added to DB!");
+      Alert.alert("Success", "3 Dummy Vendors added!");
     } catch (error: any) {
-      console.error("Seeding Error:", error);
       Alert.alert("Error", error.message);
     }
   };
 
-  const findVendors = async () => {
-    try {
-      // 1. Simulate Customer Location (Same as seeding center)
-      const center = [26.6406, -81.8723];
-      const radiusInKm = 50; // Large radius to ensure we find them for testing
-
-      // 2. Get Geohash Bounds
-      // This calculates the start/end hash strings for the search area
-      const bounds = geofire.geohashQueryBounds(center, radiusInKm * 1000);
-      const promises = [];
-
-      // 3. Create a Query for each "Bound" (usually 4-9 queries)
-      for (const b of bounds) {
-        const q = query(
-          collection(db, "users"),
-          where("role", "==", "vendor"), // Only get vendors
-          where("isOnline", "==", true), // Only online
-          orderBy("location.geohash"), // Must order by geohash for range query
-          startAt(b[0]),
-          endAt(b[1])
-        );
-        promises.push(getDocs(q));
-      }
-
-      // 4. Execute all queries
-      const snapshots = await Promise.all(promises);
-
-      const matchingVendors: any[] = [];
-
-      for (const snap of snapshots) {
-        for (const doc of snap.docs) {
-          const lat = doc.data().location.coordinates.latitude;
-          const lng = doc.data().location.coordinates.longitude;
-
-          // 5. Calculate Exact Distance (Filter false positives)
-          const distanceInKm = geofire.distanceBetween([lat, lng], center);
-
-          if (distanceInKm <= radiusInKm) {
-            matchingVendors.push({
-              id: doc.id,
-              ...doc.data(),
-              distance: distanceInKm, // Save this to display in UI
-            });
-          }
-        }
-      }
-
-      // 6. Sort by nearest first
-      matchingVendors.sort((a, b) => a.distance - b.distance);
-
-      setNearbyVendors(matchingVendors);
-      console.log("Found Vendors:", matchingVendors.length);
-    } catch (error: any) {
-      console.error("Discovery Error:", error);
-      Alert.alert("Error", error.message);
-    }
-  };
-
-  // Real-time Order Listener
-  useEffect(() => {
-    if (!activeOrderId) return;
-
-    // Create a reference to the specific order document
-    const orderRef = doc(db, "orders", activeOrderId);
-
-    // "onSnapshot" fires every time the document changes in the DB
-    const unsubscribe = onSnapshot(orderRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const data = docSnapshot.data();
-        console.log("Real-time Update:", data.status);
-        setOrderStatus(data.status);
-      }
-    });
-
-    // Cleanup listener when component unmounts or order changes
-    return () => unsubscribe();
-  }, [activeOrderId]);
-
-  console.log(
-    "Render Cycle - Active Order:",
-    activeOrderId,
-    "Status:",
-    orderStatus
-  );
-
+  // --- RENDER: VENDOR MODE ---
   if (isVendorMode) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#f5f5f5', paddingTop: 50 }}>
-        {/* 1. TOP BAR: Back Button & Title */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
-          <Button
-            title="Exit"
-            color="red"
-            onPress={() => {
-              setIsVendorMode(false);
+      <View style={{ flex: 1, backgroundColor: "#f5f5f5" }}>
+        {/* 1. FIXED HEADER (Increased Safe Area Padding) */}
+        <View
+          style={{
+            paddingTop: 60, // Increased from 50 to clear status bar
+            paddingBottom: 15,
+            paddingHorizontal: 20,
+            backgroundColor: "white",
+            borderBottomWidth: 1,
+            borderColor: "#e0e0e0",
+            flexDirection: "row",
+            alignItems: "center",
+            // Shadow for depth
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 3,
+            elevation: 4,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setIsVendorMode(false)}
+            style={{
+              backgroundColor: "#ffebee", // Light red background
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              marginRight: 15,
             }}
-          />
-          <Text style={{ fontSize: 18, fontWeight: 'bold', marginLeft: 20 }}>
-            {vendorTab === 'home' ? 'My Shop' : 'Order Manager'}
+          >
+            <Text
+              style={{ color: "#d32f2f", fontWeight: "bold", fontSize: 14 }}
+            >
+              ← Exit
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={{ fontSize: 18, fontWeight: "bold", color: "#333" }}>
+            {vendorTab === "home" ? "My Shop" : "Order Manager"}
           </Text>
         </View>
 
-        {/* 2. CONTENT AREA: Swaps based on tab */}
+        {/* 2. CONTENT AREA */}
         <View style={{ flex: 1 }}>
-          {vendorTab === 'home' ? (
-            <VendorHomeScreen userId={currentVendorId} /> 
+          {vendorTab === "home" ? (
+            <VendorHomeScreen userId={currentVendorId} />
           ) : (
             <VendorOrderManager vendorUid={currentVendorId} />
           )}
         </View>
 
         {/* 3. BOTTOM NAVIGATION BAR */}
-        <View style={{ 
-          flexDirection: 'row', 
-          backgroundColor: 'white', 
-          borderTopWidth: 1, 
-          borderColor: '#ddd', 
-          paddingBottom: 20, // For iPhone Home Indicator
-          paddingTop: 10
-        }}>
-          <Pressable 
-            onPress={() => setVendorTab('home')}
-            style={{ flex: 1, alignItems: 'center' }}
+        <View
+          style={{
+            flexDirection: "row",
+            backgroundColor: "white",
+            borderTopWidth: 1,
+            borderColor: "#ddd",
+            paddingBottom: 30,
+            paddingTop: 15,
+          }}
+        >
+          <Pressable
+            onPress={() => setVendorTab("home")}
+            style={{ flex: 1, alignItems: "center" }}
           >
-            <Text style={{ 
-              color: vendorTab === 'home' ? '#2196F3' : '#888', 
-              fontWeight: 'bold' 
-            }}>
-              🏠 Dashboard
+            <Text style={{ fontSize: 24 }}>🏠</Text>
+            <Text
+              style={{
+                color: vendorTab === "home" ? "#2196F3" : "#888",
+                fontWeight: "bold",
+                fontSize: 12,
+                marginTop: 4,
+              }}
+            >
+              Dashboard
             </Text>
           </Pressable>
-
-          <Pressable 
-            onPress={() => setVendorTab('orders')}
-            style={{ flex: 1, alignItems: 'center' }}
+          <Pressable
+            onPress={() => setVendorTab("orders")}
+            style={{ flex: 1, alignItems: "center" }}
           >
-            <Text style={{ 
-              color: vendorTab === 'orders' ? '#2196F3' : '#888', 
-              fontWeight: 'bold' 
-            }}>
-              📋 Orders
+            <Text style={{ fontSize: 24 }}>📋</Text>
+            <Text
+              style={{
+                color: vendorTab === "orders" ? "#2196F3" : "#888",
+                fontWeight: "bold",
+                fontSize: 12,
+                marginTop: 4,
+              }}
+            >
+              Orders
             </Text>
           </Pressable>
         </View>
-
       </View>
     );
   }
 
+  // --- RENDER: ORDER HISTORY ---
+  if (showHistory) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
+        {/* Simple Header with Back Button */}
+        <View
+          style={{
+            paddingTop: 60,
+            paddingBottom: 15,
+            paddingHorizontal: 20,
+            backgroundColor: "white",
+            borderBottomWidth: 1,
+            borderColor: "#eee",
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <Button title="← Back" onPress={() => setShowHistory(false)} />
+          <Text style={{ fontSize: 20, fontWeight: "bold", marginLeft: 20 }}>
+            My Orders
+          </Text>
+        </View>
+
+        {/* The Component Copilot built */}
+        <View style={{ flex: 1, padding: 20 }}>
+          <CustomerOrderHistory />
+        </View>
+      </View>
+    );
+  }
+
+  // --- RENDER: CUSTOMER HOME ---
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
-      headerImage={
-        <Image
-          source={require("@/assets/images/partial-react-logo.png")}
-          style={styles.reactLogo}
-        />
-      }
-    >
-      <ThemedView style={styles.titleContainer}>
-        {/* ... existing header ... */}
-        <Button
-          title="Dev: Switch to Vendor Mode"
-          onPress={() => setIsVendorMode(true)}
-        />
-      </ThemedView>
-
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome to Instaqua!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-
-      {/* 3. Add the Button */}
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Connectivity</ThemedText>
-        <Button title="Ping Firebase" onPress={testConnection} />
-        <Button title="Step 2: Simulate Sign Up" onPress={testSignUp} />
-        <Button title="Step 3: Seed Vendors" onPress={seedDatabase} />
-      </ThemedView>
-
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 4: Discovery</ThemedText>
-        <Button title="Find Nearby Vendors" onPress={findVendors} />
-
-        {activeOrderId && (
-          <View
+    <View style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
+      {/* 1. CUSTOM HEADER */}
+      <View
+        style={{
+          paddingTop: 60,
+          paddingBottom: 20,
+          paddingHorizontal: 20,
+          backgroundColor: "white",
+          borderBottomWidth: 1,
+          borderColor: "#eee",
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <View>
+          <Text
             style={{
-              marginTop: 20,
-              padding: 20,
-              backgroundColor: "#000000", // PURE BLACK BACKGROUND
-              borderWidth: 4,
-              borderColor: "#00FF00", // BRIGHT GREEN BORDER
-              borderRadius: 10,
+              color: "#888",
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: 1,
             }}
           >
+            Delivering to
+          </Text>
+          <TouchableOpacity
+            onPress={() => setCurrentAddress(null)} // Clicking title allows reseletion
+            disabled={!currentAddress}
+            style={{ flexDirection: "row", alignItems: "center", marginTop: 5 }}
+          >
             <Text
-              style={{
-                color: "#00FF00", // BRIGHT GREEN TEXT
-                fontSize: 24,
-                fontWeight: "bold",
-                textAlign: "center",
-              }}
+              style={{ fontSize: 22, fontWeight: "bold", color: "#2196F3" }}
             >
-              STATUS: {orderStatus || "WAITING..."}
+              📍
             </Text>
+            <Text
+              style={{ fontSize: 18, fontWeight: "bold", marginLeft: 5 }}
+              numberOfLines={1}
+            >
+              {currentAddress ? currentAddress.label : "Select Location ▾"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity
+          onPress={() => setShowHistory(true)}
+          style={{
+            backgroundColor: "#e3f2fd",
+            padding: 10,
+            borderRadius: 20,
+          }}
+        >
+          <Text style={{ fontSize: 20 }}>📄</Text>
+        </TouchableOpacity>
+      </View>
 
-            <Text
-              style={{ color: "#FFFFFF", textAlign: "center", marginTop: 10 }}
-            >
-              Order ID: {activeOrderId}
+      {/* 2. MAIN CONTENT SCROLL */}
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        {/* A. ADDRESS SELECTION (Shown if no address active) */}
+        {!currentAddress && (
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ fontSize: 16, marginBottom: 10, color: "#555" }}>
+              Please select a saved address or add a new one:
             </Text>
+            <AddressManager
+              selectedAddressId={currentAddress?.id}
+              onSelectAddress={setCurrentAddress}
+            />
           </View>
         )}
 
-        {/* Render the List */}
-        {nearbyVendors.map((vendor) => (
-          <ThemedView
-            key={vendor.id}
-            style={{
-              padding: 10,
-              marginVertical: 5,
-              backgroundColor: "#f0f0f0",
-              borderRadius: 8,
-            }}
-          >
-            <ThemedText type="defaultSemiBold">
-              {vendor.businessName}
-            </ThemedText>
-            <ThemedText>{vendor.distance.toFixed(2)} km away</ThemedText>
-            <ThemedText style={{ color: "green" }}>
-              Stock: {vendor.inventoryCount} cans
-            </ThemedText>
-          </ThemedView>
-        ))}
-      </ThemedView>
+        {/* B. VENDOR LIST (Shown if address active) */}
+        {currentAddress && (
+          <>
+            {/* Live Order Status Box */}
+            {activeOrderId && (
+              <View
+                style={{
+                  marginBottom: 20,
+                  padding: 15,
+                  backgroundColor: "#212121",
+                  borderRadius: 10,
+                  borderLeftWidth: 5,
+                  borderLeftColor: "#00e676",
+                }}
+              >
+                <Text
+                  style={{ color: "#00e676", fontWeight: "bold", fontSize: 16 }}
+                >
+                  LIVE STATUS: {orderStatus || "CONNECTING..."}
+                </Text>
+                <Text style={{ color: "white", fontSize: 12, marginTop: 5 }}>
+                  Order #{activeOrderId.slice(0, 6)}
+                </Text>
+              </View>
+            )}
 
-      {/* Render the List */}
-      {nearbyVendors.map((vendor) => (
-        <ThemedView
-          key={vendor.id}
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: "bold",
+                marginBottom: 15,
+                color: "#333",
+              }}
+            >
+              Nearby Suppliers
+            </Text>
+
+            {nearbyVendors.length === 0 ? (
+              <View style={{ padding: 40, alignItems: "center" }}>
+                <Text style={{ color: "#888", marginBottom: 10 }}>
+                  No vendors found nearby.
+                </Text>
+                <Button title="Retry Search" onPress={findVendors} />
+              </View>
+            ) : (
+              nearbyVendors.map((vendor) => (
+                <View
+                  key={vendor.id}
+                  style={{
+                    backgroundColor: "white",
+                    borderRadius: 15,
+                    padding: 15,
+                    marginBottom: 15,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    elevation: 3, // Android Shadow
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 18,
+                          fontWeight: "bold",
+                          color: "#333",
+                        }}
+                      >
+                        {vendor.businessName}
+                      </Text>
+                      <Text style={{ color: "#666", marginTop: 4 }}>
+                        {vendor.distance.toFixed(1)} km away • ⭐{" "}
+                        {vendor.rating || "New"}
+                      </Text>
+                      <Text
+                        style={{
+                          color: vendor.inventoryCount > 0 ? "green" : "red",
+                          marginTop: 4,
+                          fontSize: 12,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {vendor.inventoryCount > 0
+                          ? `✓ In Stock (${vendor.inventoryCount} cans)`
+                          : "❌ Out of Stock"}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: "#e3f2fd",
+                        width: 50,
+                        height: 50,
+                        borderRadius: 25,
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text style={{ fontSize: 24 }}>💧</Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={{
+                      marginTop: 15,
+                      borderTopWidth: 1,
+                      borderColor: "#eee",
+                      paddingTop: 15,
+                    }}
+                  >
+                    <Button
+                      title="Order"
+                      onPress={() => setSelectedVendor(vendor)}
+                      color={vendor.inventoryCount > 0 ? "#2196F3" : "#ccc"}
+                      disabled={vendor.inventoryCount <= 0}
+                    />
+                  </View>
+                </View>
+              ))
+            )}
+          </>
+        )}
+
+        {/* C. DEBUG TOOLS (Collapsed at bottom) */}
+        <View
           style={{
-            padding: 15,
-            marginVertical: 8,
-            backgroundColor: "#e0e0e0", // Slightly darker to pop
-            borderRadius: 8,
-            gap: 5,
+            marginTop: 50,
+            padding: 20,
+            backgroundColor: "#fff3e0",
+            borderRadius: 10,
           }}
         >
-          <ThemedText type="defaultSemiBold">{vendor.businessName}</ThemedText>
-          <ThemedText>{vendor.distance.toFixed(2)} km away</ThemedText>
-
-          {/* THE NEW ACTION BUTTON */}
+          <Text
+            style={{ color: "#e65100", fontWeight: "bold", marginBottom: 10 }}
+          >
+            🛠 Developer Zone
+          </Text>
           <Button
-            title="Order 2 Cans ($80)"
-            onPress={() => placeOrder(vendor)}
-            color="#2196F3"
+            title="Simulate Sign Up (Log In)"
+            color="#ef6c00"
+            onPress={testSignUp}
           />
-        </ThemedView>
-      ))}
-    </ParallaxScrollView>
+          <View style={{ height: 10 }} />
+          <Button
+            title="Switch to Vendor Mode"
+            color="#ef6c00"
+            onPress={() => setIsVendorMode(true)}
+          />
+          <View style={{ height: 10 }} />
+          <Button
+            title="Seed Dummy Vendors"
+            color="#ff9800"
+            onPress={seedDatabase}
+          />
+        </View>
+      </ScrollView>
+      {/* Checkout Modal Integration */}
+      <CheckoutModal
+        isVisible={!!selectedVendor}
+        vendor={selectedVendor}
+        userLocation={currentAddress?.coordinates}
+        onClose={() => setSelectedVendor(null)}
+        onConfirm={placeOrder}
+      />
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-  },
-});
