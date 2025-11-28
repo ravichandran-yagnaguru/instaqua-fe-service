@@ -5,7 +5,7 @@ import { signOut } from 'firebase/auth';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { collection, endAt, getDocs, orderBy, query, startAt, where, addDoc, setDoc, doc } from 'firebase/firestore';
+import { collection, endAt, getDocs, orderBy, query, startAt, where, addDoc, setDoc, doc, writeBatch } from 'firebase/firestore';
 import * as geofire from 'geofire-common';
 import React, { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -34,12 +34,12 @@ export default function HomeScreen() {
   const router = useRouter();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentAddress, setCurrentAddress] = useState<string>("Locating...");
+  const [currentAddress, setCurrentAddress] = useState<any>(null);
 
   // Fetch default address for logged-in user
   const fetchDefaultAddress = useCallback(async () => {
     if (!auth.currentUser) {
-      setCurrentAddress("Select Location ▾");
+      setCurrentAddress(null);
       return;
     }
     try {
@@ -50,13 +50,13 @@ export default function HomeScreen() {
       );
       const snap = await getDocs(q);
       if (!snap.empty) {
-        const doc = snap.docs[0];
-        setCurrentAddress(doc.data().fullAddress || "Select Location ▾");
+        const docSnap = snap.docs[0];
+        setCurrentAddress({ id: docSnap.id, ...docSnap.data() });
       } else {
-        setCurrentAddress("Select Location ▾");
+        setCurrentAddress(null);
       }
     } catch {
-      setCurrentAddress("Select Location ▾");
+      setCurrentAddress(null);
     }
   }, []);
 
@@ -69,56 +69,34 @@ export default function HomeScreen() {
 
   useEffect(() => {
     (async () => {
-      // 1. Check for logged-in user and fetch default address
-      if (auth.currentUser) {
-        try {
-          const uid = auth.currentUser.uid;
-          const q = query(
-            collection(db, `users/${uid}/addresses`),
-            where('isDefault', '==', true)
-          );
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            const doc = snap.docs[0];
-            setCurrentAddress(doc.data().label || null);
-          } else {
-            setCurrentAddress("Select Location ▾");
-          }
-        } catch {
-          setCurrentAddress("Select Location ▾");
-        }
-      } else {
+      if (currentAddress?.coordinates) {
+        await fetchNearbyVendors(currentAddress.coordinates.latitude, currentAddress.coordinates.longitude);
+      } else if (!auth.currentUser) {
         // Fallback to GPS location if not logged in
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          setCurrentAddress("Permission Denied");
           setLoading(false);
           return;
         }
         let location = await Location.getCurrentPositionAsync({});
-        // setCoords(location.coords); // removed unused
         let reversed = await Location.reverseGeocodeAsync({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude
         });
         if (reversed.length > 0) {
-          setCurrentAddress(`${reversed[0].street}, ${reversed[0].city}`);
+          setCurrentAddress({
+            label: `${reversed[0].street}, ${reversed[0].city}`,
+            fullAddress: `${reversed[0].name || ''} ${reversed[0].street || ''}, ${reversed[0].city || ''}`,
+            coordinates: {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude
+            }
+          });
         }
-        // Also fetch vendors for guests
         await fetchNearbyVendors(location.coords.latitude, location.coords.longitude);
-        return;
       }
-      // 2. If we have a user, still get their location for vendor search
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLoading(false);
-        return;
-      }
-      let location = await Location.getCurrentPositionAsync({});
-      // setCoords(location.coords); // removed unused
-      await fetchNearbyVendors(location.coords.latitude, location.coords.longitude);
     })();
-  }, []);
+  }, [currentAddress]);
 
   const fetchNearbyVendors = async (lat: number, lng: number) => {
     try {
@@ -232,7 +210,7 @@ export default function HomeScreen() {
               return userEmail ? `Hi, ${userEmail.split('@')[0]}` : 'Hi, User';
             })()}
           </Text>
-          {currentAddress === "Select Location ▾" ? (
+          {currentAddress == null ? (
             <TouchableOpacity
               style={styles.addAddressPill}
               onPress={() => router.push('/address/add')}
@@ -241,7 +219,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity onPress={() => router.push('/address/selection')}>
-              <Text style={styles.welcomeSubtitle}>{currentAddress}</Text>
+              <Text style={styles.welcomeSubtitle}>{currentAddress.label || "Select Location ▾"}</Text>
+              <Text style={[styles.welcomeSubtitle, { fontSize: 13, color: '#fff', opacity: 0.7 }]}>{currentAddress.fullAddress || "No address selected"}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -279,7 +258,7 @@ export default function HomeScreen() {
               <View style={styles.vendorInfo}>
                 <View style={styles.vendorHeaderRow}>
                   <Text style={styles.vendorName}>{vendor.businessName}</Text>
-                  <Text style={styles.vendorDistance}>{vendor.distance.toFixed(1)} km</Text> 
+                  <Text style={styles.vendorDistance}>{vendor.distance ? vendor.distance.toFixed(1) + ' km' : '...'}</Text>
                 </View>
                 
                 <View style={styles.vendorDetailsRow}>
@@ -419,7 +398,6 @@ const styles = StyleSheet.create({
 });
 
 // --- STRICT SCHEMA SEEDING FUNCTION ---
-import { writeBatch } from 'firebase/firestore';
 
 async function seedDatabase() {
   try {
@@ -443,7 +421,7 @@ async function seedDatabase() {
       },
     ];
     const batch = writeBatch(db);
-    for (const [i, v] of vendors.entries()) {
+    for (const v of vendors) {
       const lat = center[0] + v.offset[0];
       const lng = center[1] + v.offset[1];
       const geohash = geofire.geohashForLocation([lat, lng]);
@@ -454,6 +432,7 @@ async function seedDatabase() {
         isOnline: true,
         rating: 5,
         inventoryCount: 3,
+        serviceRadiusKm: 15,
         activeHours: {
           start: new Date(2025, 0, 1, 8, 0, 0),
           end: new Date(2025, 0, 1, 22, 0, 0),

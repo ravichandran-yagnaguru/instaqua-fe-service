@@ -123,17 +123,18 @@ export default function VendorShop() {
 			const totalAmount = getTotalPrice();
 			await addDoc(collection(db, 'orders'), {
 				vendorId: id,
-				customerId: auth.currentUser.uid,
+				vendor: vendor ? { businessName: vendor.businessName } : {},
+				customer: { uid: auth.currentUser.uid },
 				items,
 				status: 'CREATED',
-				totalAmount,
-				createdAt: new Date(),
+				pricing: { totalAmount },
+				createdAt: new Date().toISOString(),
 			});
 			setCart({});
 			Alert.alert('Order Placed', 'Your order has been placed successfully!', [
 				{ text: 'OK', onPress: () => router.push('/customer/history') },
 			]);
-		} catch {
+		} catch (e) {
 			Alert.alert('Error', 'Failed to place order.');
 		}
 		setPlacingOrder(false);
