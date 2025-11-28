@@ -1,9 +1,13 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
 
+
+import { useEffect } from 'react';
+import { useRouter, useSegments, Stack } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { StatusBar } from 'expo-status-bar';
+
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -11,6 +15,20 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const inAuthGroup = segments[0] === 'auth';
+      if (!user && !inAuthGroup) {
+        router.replace('/auth/login');
+      } else if (user && inAuthGroup) {
+        router.replace('/(tabs)');
+      }
+    });
+    return unsubscribe;
+  }, [segments]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
