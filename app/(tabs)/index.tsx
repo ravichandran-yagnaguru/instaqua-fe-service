@@ -4,11 +4,13 @@ import { db, auth } from '@/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { collection, endAt, getDocs, orderBy, query, startAt, where, addDoc, setDoc, doc, writeBatch } from 'firebase/firestore';
 import * as geofire from 'geofire-common';
-import React, { useEffect, useState, useCallback } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { useAddress } from '@/contexts/AddressContext';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import AppHeader from '@/components/AppHeader';
 
   // Helper to get vendor closing time (robust)
   const getCloseTime = (vendor: any) => {
@@ -30,73 +32,27 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacit
     }
   };
 
+
 export default function HomeScreen() {
   const router = useRouter();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentAddress, setCurrentAddress] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const { selectedAddress } = useAddress();
 
-  // Fetch default address for logged-in user
-  const fetchDefaultAddress = useCallback(async () => {
-    if (!auth.currentUser) {
-      setCurrentAddress(null);
-      return;
-    }
-    try {
-      const uid = auth.currentUser.uid;
-      const q = query(
-        collection(db, `users/${uid}/addresses`),
-        where('isDefault', '==', true)
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const docSnap = snap.docs[0];
-        setCurrentAddress({ id: docSnap.id, ...docSnap.data() });
-      } else {
-        setCurrentAddress(null);
-      }
-    } catch {
-      setCurrentAddress(null);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchDefaultAddress();
-    }, [fetchDefaultAddress])
-  );
-  // Removed unused coords state
-
-  useEffect(() => {
+  // Pull-to-refresh handler: get current location and reload vendors
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
     (async () => {
-      if (currentAddress?.coordinates) {
-        await fetchNearbyVendors(currentAddress.coordinates.latitude, currentAddress.coordinates.longitude);
-      } else if (!auth.currentUser) {
-        // Fallback to GPS location if not logged in
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setLoading(false);
-          return;
-        }
-        let location = await Location.getCurrentPositionAsync({});
-        let reversed = await Location.reverseGeocodeAsync({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude
-        });
-        if (reversed.length > 0) {
-          setCurrentAddress({
-            label: `${reversed[0].street}, ${reversed[0].city}`,
-            fullAddress: `${reversed[0].name || ''} ${reversed[0].street || ''}, ${reversed[0].city || ''}`,
-            coordinates: {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude
-            }
-          });
-        }
-        await fetchNearbyVendors(location.coords.latitude, location.coords.longitude);
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setRefreshing(false);
+        return;
       }
+      let location = await Location.getCurrentPositionAsync({});
+      await fetchNearbyVendors(location.coords.latitude, location.coords.longitude);
     })();
-  }, [currentAddress]);
+  }, []);
 
   const fetchNearbyVendors = async (lat: number, lng: number) => {
     try {
@@ -149,11 +105,16 @@ export default function HomeScreen() {
       console.error(error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   // --- FIX 2: QUICK ORDER LOGIC ---
   const handleQuickOrder = () => {
+    if (!selectedAddress) {
+      Alert.alert("No Address", "Please select a delivery location");
+      return;
+    }
     if (vendors.length > 0) {
       // Automatically pick the first (nearest) vendor
       const nearest = vendors[0];
@@ -165,68 +126,22 @@ export default function HomeScreen() {
 
 
 
+
+  // Re-fetch vendors when selectedAddress changes
+  useEffect(() => {
+    if (selectedAddress && selectedAddress.coordinates) {
+      fetchNearbyVendors(selectedAddress.coordinates.latitude, selectedAddress.coordinates.longitude);
+    }
+  }, [selectedAddress]);
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Instaqua</Text>
-          <View style={styles.headerIcons}>
-            <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.iconButton}>
-              <Ionicons name="person-circle" size={28} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={async () => {
-                Alert.alert(
-                  'Logout',
-                  'Are you sure you want to log out?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Logout',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await signOut(auth);
-                          router.replace('/auth/login');
-                        } catch (e) {
-                          Alert.alert('Error', 'Logout failed.');
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons name="log-out-outline" size={26} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.headerWelcome}>
-          {/* Greeting with user's email prefix */}
-          <Text style={styles.welcomeTitle}>
-            {(() => {
-              const userEmail = auth.currentUser?.email;
-              return userEmail ? `Hi, ${userEmail.split('@')[0]}` : 'Hi, User';
-            })()}
-          </Text>
-          {currentAddress == null ? (
-            <TouchableOpacity
-              style={styles.addAddressPill}
-              onPress={() => router.push('/address/add')}
-            >
-              <Text style={styles.addAddressPillText}>+ Add Address</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={() => router.push('/address/selection')}>
-              <Text style={styles.welcomeSubtitle}>{currentAddress.label || "Select Location ▾"}</Text>
-              <Text style={[styles.welcomeSubtitle, { fontSize: 13, color: '#fff', opacity: 0.7 }]}>{currentAddress.fullAddress || "No address selected"}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <AppHeader />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {/* Quick Order Button */}
         <TouchableOpacity style={styles.quickOrderCard} onPress={handleQuickOrder}>
           <View style={styles.quickOrderIcon}>

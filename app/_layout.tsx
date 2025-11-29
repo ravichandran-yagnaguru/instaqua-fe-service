@@ -1,12 +1,14 @@
 
 
 import { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
-import { StatusBar } from 'expo-status-bar';
+
+import { AddressProvider } from '../contexts/AddressContext';
 
 
 export const unstable_settings = {
@@ -31,13 +33,15 @@ export default function RootLayout() {
   }, [segments]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        <Stack.Screen name="_env-debug" options={{ title: 'Env Debug' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <AddressProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+          <Stack.Screen name="_env-debug" options={{ title: 'Env Debug' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </AddressProvider>
   );
 }

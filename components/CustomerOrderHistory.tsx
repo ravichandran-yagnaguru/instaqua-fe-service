@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from "react-native";
-import { doc, updateDoc, addDoc, collection } from "firebase/firestore";
-import { query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { useAddress } from '../contexts/AddressContext';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, RefreshControl } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
+import { doc, updateDoc, addDoc, collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -33,11 +34,18 @@ const statusStyles: Record<string, any> = {
   CANCELLED: { backgroundColor: "#e53935", color: "#fff" },
 };
 
+
 const CustomerOrderHistory: React.FC = () => {
+  const { selectedAddress } = useAddress();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  // Store the unsubscribe function for onSnapshot
+  const [unsub, setUnsub] = useState<null | (() => void)>(null);
 
-  useEffect(() => {
+  const fetchOrders = React.useCallback(() => {
+    if (unsub) unsub();
+    setLoading(true);
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         const q = query(
@@ -50,20 +58,36 @@ const CustomerOrderHistory: React.FC = () => {
           (snap) => {
             setOrders(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
             setLoading(false);
+            setRefreshing(false);
           },
           (err) => {
             console.error("Firestore Error:", err);
             Alert.alert("Data Error", err.message);
             setLoading(false);
+            setRefreshing(false);
           }
         );
-        return () => unsubSnapshot();
+        setUnsub(() => unsubSnapshot);
       } else {
         setLoading(false);
+        setRefreshing(false);
       }
     });
-    return () => unsubAuth();
+    setUnsub(() => unsubAuth);
+  }, [unsub]);
+
+  useEffect(() => {
+    fetchOrders();
+    return () => {
+      if (unsub) unsub();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    fetchOrders();
+  }, [fetchOrders]);
 
   if (loading) {
     return (
@@ -98,6 +122,10 @@ const CustomerOrderHistory: React.FC = () => {
           {
             text: "Reorder",
             onPress: async () => {
+              if (!selectedAddress) {
+                Alert.alert("No Address", "Please select a delivery location in your profile before reordering.");
+                return;
+              }
               // Ensure vendor is never undefined
               let vendor = order.vendor;
               if (!vendor) {
@@ -122,6 +150,10 @@ const CustomerOrderHistory: React.FC = () => {
                 status: "CREATED",
                 pricing,
                 createdAt: new Date().toISOString(),
+                deliveryLocation: {
+                  address: selectedAddress.fullAddress,
+                  coordinates: selectedAddress.coordinates,
+                },
               });
               Alert.alert("Order Placed", "Your reorder has been placed!");
             },
@@ -134,7 +166,12 @@ const CustomerOrderHistory: React.FC = () => {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16 }}>
+    <ScrollView
+      contentContainerStyle={{ padding: 16 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       {orders.map((order) => {
         const canCancel = order.status === 'CREATED' || order.status === 'ACCEPTED';
         const canReorder = order.status === 'CANCELLED' || order.status === 'DELIVERED';
@@ -145,6 +182,13 @@ const CustomerOrderHistory: React.FC = () => {
               <Text style={styles.date}>{formatDate(order.createdAt)}</Text>
               <Text style={styles.vendor}>{order.vendor?.businessName || order.vendorName || 'Vendor'}</Text>
             </View>
+            {/* Delivery Address */}
+            {order.deliveryLocation?.address ? (
+              <View style={styles.addressRow}>
+                <Ionicons name="location-sharp" size={12} color="#666" style={{ marginRight: 4 }} />
+                <Text style={styles.addressText} numberOfLines={1}>{order.deliveryLocation.address}</Text>
+              </View>
+            ) : null}
             {/* Items */}
             <View style={{ marginVertical: 8 }}>
               {order.items?.map((item: any, idx: number) => (
@@ -213,6 +257,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    marginTop: 2,
+  },
+  addressText: {
+    fontSize: 12,
+    color: '#666',
+    flex: 1,
   },
   date: {
     color: '#888',

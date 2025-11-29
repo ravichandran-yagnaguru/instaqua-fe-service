@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import AppHeader from '@/components/AppHeader';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { doc, getDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { useAddress } from '../../contexts/AddressContext';
 import { db, auth } from '../../firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -52,9 +54,16 @@ export default function VendorShop() {
 	const [loading, setLoading] = useState<boolean>(true);
 	const [cart, setCart] = useState<Cart>({});
 	const [placingOrder, setPlacingOrder] = useState<boolean>(false);
+	const { selectedAddress } = useAddress();
+	const [refreshing, setRefreshing] = useState(false);
 
 	useEffect(() => {
 		fetchData();
+	}, [id]);
+
+	const onRefresh = React.useCallback(() => {
+		setRefreshing(true);
+		fetchData().finally(() => setRefreshing(false));
 	}, [id]);
 
 	async function fetchData() {
@@ -117,6 +126,10 @@ export default function VendorShop() {
 			router.push('/auth/login');
 			return;
 		}
+		if (!selectedAddress) {
+			Alert.alert('No Address', 'Please select a delivery location before placing an order.');
+			return;
+		}
 		setPlacingOrder(true);
 		try {
 			const items = getCartItems();
@@ -129,6 +142,10 @@ export default function VendorShop() {
 				status: 'CREATED',
 				pricing: { totalAmount },
 				createdAt: new Date().toISOString(),
+				deliveryLocation: {
+					address: selectedAddress.fullAddress,
+					coordinates: selectedAddress.coordinates,
+				},
 			});
 			setCart({});
 			Alert.alert('Order Placed', 'Your order has been placed successfully!', [
@@ -144,24 +161,17 @@ export default function VendorShop() {
 	return (
 		<View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
 			<Stack.Screen options={{ headerShown: false }} />
-			{/* Custom Header */}
-			<View style={styles.header}>
-				<TouchableOpacity
-					onPress={() => router.back()}
-					style={styles.backBtn}
-					hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-				>
-					<Ionicons name="arrow-back" size={24} color={WHITE} />
-				</TouchableOpacity>
-				<Text style={styles.headerTitle}>{vendor?.businessName || 'Vendor Shop'}</Text>
-			</View>
+			<AppHeader showBackButton={true} />
 
 			{loading ? (
 				<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
 					<ActivityIndicator size="large" color={BLUE} />
 				</View>
 			) : (
-				<ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+				<ScrollView
+					contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+					refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+				>
 					{/* Vendor Card */}
 					{vendor && (
 						<View style={styles.vendorCard}>
@@ -218,10 +228,12 @@ export default function VendorShop() {
 					<TouchableOpacity
 						style={styles.placeOrderBtn}
 						onPress={handlePlaceOrder}
-						disabled={placingOrder}
+						disabled={placingOrder || !selectedAddress}
 					>
 						{placingOrder ? (
 							<ActivityIndicator color={WHITE} />
+						) : !selectedAddress ? (
+							<Text style={{ color: WHITE, fontWeight: 'bold', fontSize: 16 }}>Select Address</Text>
 						) : (
 							<Text style={{ color: WHITE, fontWeight: 'bold', fontSize: 16 }}>Place Order</Text>
 						)}

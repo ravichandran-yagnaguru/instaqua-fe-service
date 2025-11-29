@@ -1,22 +1,15 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter, Stack } from 'expo-router';
+import { View, StyleSheet } from 'react-native';
+import { Stack } from 'expo-router';
 import CustomerOrderHistory from '@/components/CustomerOrderHistory';
+import AppHeader from '@/components/AppHeader';
 
 export default function OrderHistoryScreen() {
-  const router = useRouter();
   return (
     <View style={{ flex: 1, backgroundColor: 'white' }}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order History</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <AppHeader showBackButton={true} title="Order History" />
       <View style={{ flex: 1 }}>
         <CustomerOrderHistory />
       </View>
