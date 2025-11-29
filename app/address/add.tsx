@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
 import type { LocationObjectCoords } from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { addDoc, collection, writeBatch, getDocs, doc } from 'firebase/firestore';
 import { db, auth } from '@/firebaseConfig';
@@ -117,67 +117,70 @@ export default function AddAddressScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="close" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Add Address</Text>
-        <View style={{width: 24}} />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="close" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Add Address</Text>
+          <View style={{width: 24}} />
+        </View>
+
+        <View style={styles.form}>
+          <TouchableOpacity
+            style={styles.useLocationBtn}
+            onPress={handleUseCurrentLocation}
+            disabled={locating}
+          >
+            {locating ? (
+              <ActivityIndicator color="#007AFF" />
+            ) : (
+              <Text style={styles.useLocationBtnText}>📍 Use Current Location</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.label}>Label (e.g. Home, Work)</Text>
+          <TextInput style={styles.input} value={label} onChangeText={setLabel} placeholder="Label" />
+
+          <Text style={styles.label}>House No / Building Name</Text>
+          <TextInput style={styles.input} value={house} onChangeText={setHouse} placeholder="e.g. 104, Galaxy Apts" />
+
+          <Text style={styles.label}>Street Address / Area</Text>
+          <TextInput style={styles.input} value={road} onChangeText={setRoad} placeholder="e.g. 123 Main St, Sector 5" />
+
+          <Text style={styles.label}>Landmark (Optional)</Text>
+          <TextInput style={styles.input} value={landmark} onChangeText={setLandmark} placeholder="Near SBI Bank" />
+
+          <Text style={styles.label}>Zip / Postal Code</Text>
+          <TextInput style={styles.input} value={postalCode} onChangeText={setPostalCode} placeholder="e.g. 560001 or SW1A 1AA" autoCapitalize="characters" keyboardType="default" />
+
+          <Text style={styles.label}>City / District</Text>
+          <TextInput style={styles.input} value={city} onChangeText={setCity} placeholder="e.g. Bangalore or London" />
+
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setIsDefault(v => !v)}
+          >
+            <Ionicons
+              name={isDefault ? 'checkbox' : 'square-outline'}
+              size={22}
+              color={isDefault ? '#007AFF' : '#888'}
+              style={{ marginRight: 8 }}
+            />
+            <Text style={{ color: '#333', fontSize: 15 }}>Set as Default Address</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.btn, loading && {opacity: 0.7}]} 
+            onPress={saveAddress}
+            disabled={loading}
+          >
+            <Text style={styles.btnText}>{loading ? "Saving..." : "Save Address"}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-
-      <View style={styles.form}>
-        <TouchableOpacity
-          style={styles.useLocationBtn}
-          onPress={handleUseCurrentLocation}
-          disabled={locating}
-        >
-          {locating ? (
-            <ActivityIndicator color="#007AFF" />
-          ) : (
-            <Text style={styles.useLocationBtnText}>📍 Use Current Location</Text>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.label}>Label (e.g. Home, Work)</Text>
-        <TextInput style={styles.input} value={label} onChangeText={setLabel} placeholder="Label" />
-
-        <Text style={styles.label}>House No / Building Name</Text>
-        <TextInput style={styles.input} value={house} onChangeText={setHouse} placeholder="e.g. 104, Galaxy Apts" />
-
-        <Text style={styles.label}>Street Address / Area</Text>
-        <TextInput style={styles.input} value={road} onChangeText={setRoad} placeholder="e.g. 123 Main St, Sector 5" />
-
-        <Text style={styles.label}>Landmark (Optional)</Text>
-        <TextInput style={styles.input} value={landmark} onChangeText={setLandmark} placeholder="Near SBI Bank" />
-
-        <Text style={styles.label}>Zip / Postal Code</Text>
-        <TextInput style={styles.input} value={postalCode} onChangeText={setPostalCode} placeholder="e.g. 560001 or SW1A 1AA" autoCapitalize="characters" keyboardType="default" />
-
-        <Text style={styles.label}>City / District</Text>
-        <TextInput style={styles.input} value={city} onChangeText={setCity} placeholder="e.g. Bangalore or London" />
-
-        <TouchableOpacity
-          style={styles.checkboxRow}
-          onPress={() => setIsDefault(v => !v)}
-        >
-          <Ionicons
-            name={isDefault ? 'checkbox' : 'square-outline'}
-            size={22}
-            color={isDefault ? '#007AFF' : '#888'}
-            style={{ marginRight: 8 }}
-          />
-          <Text style={{ color: '#333', fontSize: 15 }}>Set as Default Address</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.btn, loading && {opacity: 0.7}]} 
-          onPress={saveAddress}
-          disabled={loading}
-        >
-          <Text style={styles.btnText}>{loading ? "Saving..." : "Save Address"}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </>
   );
 }
 

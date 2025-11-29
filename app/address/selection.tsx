@@ -1,6 +1,6 @@
 import { auth, db } from '@/firebaseConfig';
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, Stack } from "expo-router";
 import { collection, onSnapshot, orderBy, query, writeBatch, doc, updateDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
 import React, { useEffect, useState } from "react";
 import {
@@ -74,87 +74,90 @@ export default function AddressSelectionScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <AppHeader showBackButton={true} title="Select Address" />
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.container}>
+        <AppHeader showBackButton={true} title="Select Address" />
 
-      {/* --- MAP PLACEHOLDER --- */}
-      <View style={styles.mapPlaceholder}>
-        <View style={styles.mapMarker}>
-          <Ionicons name="location" size={40} color="#007AFF" />
+        {/* --- MAP PLACEHOLDER --- */}
+        <View style={styles.mapPlaceholder}>
+          <View style={styles.mapMarker}>
+            <Ionicons name="location" size={40} color="#007AFF" />
+          </View>
+          <Text style={{ color: "#999" }}>Map View Placeholder</Text>
         </View>
-        <Text style={{ color: "#999" }}>Map View Placeholder</Text>
-      </View>
 
-      <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>Select a delivery address</Text>
+        <ScrollView style={styles.content}>
+          <Text style={styles.sectionTitle}>Select a delivery address</Text>
 
-        {addresses.length === 0 ? (
-          <Text style={{ color: '#888', textAlign: 'center', marginTop: 30 }}>No saved addresses found</Text>
-        ) : (
-          addresses.map((addr) => (
-            <TouchableOpacity
-              key={addr.id}
-              onPress={() => {
-                setAddress(addr);
-                router.back();
-              }}
-              activeOpacity={0.85}
-            >
-              <View
-                style={[
-                  styles.addressCard,
-                  selectedAddress?.id === addr.id && styles.selectedCard,
-                ]}
+          {addresses.length === 0 ? (
+            <Text style={{ color: '#888', textAlign: 'center', marginTop: 30 }}>No saved addresses found</Text>
+          ) : (
+            addresses.map((addr) => (
+              <TouchableOpacity
+                key={addr.id}
+                onPress={() => {
+                  setAddress(addr);
+                  router.back();
+                }}
+                activeOpacity={0.85}
               >
-                <View style={styles.iconContainer}>
-                  <Ionicons
-                    name={getIcon(addr.type) as any}
-                    size={24}
-                    color="#007AFF"
-                  />
-                </View>
-                <View style={styles.addressInfo}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                    <Text style={styles.addressLabel}>{addr.label}</Text>
-                    {addr.isDefault && (
-                      <View style={styles.defaultBadge}>
-                        <Text style={styles.defaultBadgeText}>Default</Text>
-                      </View>
+                <View
+                  style={[
+                    styles.addressCard,
+                    selectedAddress?.id === addr.id && styles.selectedCard,
+                  ]}
+                >
+                  <View style={styles.iconContainer}>
+                    <Ionicons
+                      name={getIcon(addr.type) as any}
+                      size={24}
+                      color="#007AFF"
+                    />
+                  </View>
+                  <View style={styles.addressInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                      <Text style={styles.addressLabel}>{addr.label}</Text>
+                      {addr.isDefault && (
+                        <View style={styles.defaultBadge}>
+                          <Text style={styles.defaultBadgeText}>Default</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.addressText}>{addr.fullAddress || addr.address}</Text>
+                    {!addr.isDefault && (
+                      <TouchableOpacity onPress={() => handleSetDefault(addr.id)}>
+                        <Text style={styles.setDefaultText}>Set Default</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
-                  <Text style={styles.addressText}>{addr.fullAddress || addr.address}</Text>
-                  {!addr.isDefault && (
-                    <TouchableOpacity onPress={() => handleSetDefault(addr.id)}>
-                      <Text style={styles.setDefaultText}>Set Default</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {selectedAddress?.id === addr.id ? (
+                      <Ionicons name="checkmark-circle" size={24} color="#34C759" />
+                    ) : (
+                      <Ionicons name="ellipse-outline" size={24} color="#ccc" />
+                    )}
+                    <TouchableOpacity onPress={() => handleDelete(addr.id)} style={{ marginLeft: 10 }}>
+                      <Ionicons name="trash" size={22} color="#FF3B30" />
                     </TouchableOpacity>
-                  )}
+                  </View>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {selectedAddress?.id === addr.id ? (
-                    <Ionicons name="checkmark-circle" size={24} color="#34C759" />
-                  ) : (
-                    <Ionicons name="ellipse-outline" size={24} color="#ccc" />
-                  )}
-                  <TouchableOpacity onPress={() => handleDelete(addr.id)} style={{ marginLeft: 10 }}>
-                    <Ionicons name="trash" size={22} color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
 
-      {/* --- FOOTER BUTTON --- */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push("/address/add")} // <--- LINK TO NEW FORM
-        >
-          <Text style={styles.addButtonText}>Add New Address</Text>
-        </TouchableOpacity>
+        {/* --- FOOTER BUTTON --- */}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push("/address/add")} // <--- LINK TO NEW FORM
+          >
+            <Text style={styles.addButtonText}>Add New Address</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+    </>
   );
 }
 

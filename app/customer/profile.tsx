@@ -125,21 +125,16 @@ export default function CustomerProfile() {
           >
             <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Profile'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.manageBtn} onPress={() => router.push('/address/selection')}>
-            <Text style={styles.manageBtnText}>Manage Addresses</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/address/selection')}>
+            <Text style={styles.actionBtnText}>Manage Addresses</Text>
           </TouchableOpacity>
 
           {/* Order History Button */}
-          <TouchableOpacity style={styles.historyBtn} onPress={() => router.push('/customer/history')}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/customer/history')}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
               <MaterialIcons name="history" size={22} color="#007AFF" style={{ marginRight: 8 }} />
-              <Text style={styles.historyBtnText}>Order History</Text>
+              <Text style={styles.actionBtnText}>Order History</Text>
             </View>
-          </TouchableOpacity>
-
-          {/* Logout Button */}
-          <TouchableOpacity style={styles.manageBtn} onPress={handleLogout}>
-            <Text style={styles.manageBtnText}>Logout</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -210,14 +205,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  manageBtn: {
-    backgroundColor: '#eee',
+  actionBtn: {
+    backgroundColor: '#FFFFFF',
+    opacity: 1,
+    borderColor: '#E0E0E0',
+    borderWidth: 1,
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 16,
+    marginBottom: 0,
   },
-  manageBtnText: {
+  actionBtnText: {
     color: '#007AFF',
     fontWeight: 'bold',
     fontSize: 16,
@@ -227,17 +226,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  historyBtn: {
-    backgroundColor: '#e6f0fa',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 0,
-  },
-  historyBtnText: {
-    color: '#007AFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  // historyBtn and historyBtnText removed; unified as actionBtn/actionBtnText
 });
