@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Stack } from 'expo-router';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { auth } from '@/firebaseConfig';
@@ -36,8 +37,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome Back</Text>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.container}>
+      <Text style={styles.title}>Instaqua</Text>
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -60,6 +63,7 @@ export default function LoginScreen() {
         <Text style={styles.createButtonText}>Create Account</Text>
       </TouchableOpacity>
     </View>
+    </>
   );
 }
 

@@ -1,5 +1,7 @@
+
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import AppHeader from '@/components/AppHeader';
 import { useRouter, Stack } from 'expo-router';
 import { auth } from '../../firebaseConfig';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -97,14 +99,7 @@ export default function CustomerProfile() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: '#fff' }}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <View style={{ width: 40 }} />
-        </View>
+        <AppHeader showBackButton={true} title="My Profile" />
         {/* Form */}
         <View style={styles.form}>
           <Text style={styles.label}>Name</Text>

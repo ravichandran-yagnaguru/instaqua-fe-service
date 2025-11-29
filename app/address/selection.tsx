@@ -11,6 +11,8 @@ import {
   View,
   Alert
 } from "react-native";
+import AppHeader from '@/components/AppHeader';
+import { useAddress } from '../../contexts/AddressContext';
 
 export default function AddressSelectionScreen() {
     // Set Default Address
@@ -45,7 +47,7 @@ export default function AddressSelectionScreen() {
       );
     };
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { setAddress, selectedAddress } = useAddress();
   const [addresses, setAddresses] = useState<any[]>([]);
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -56,7 +58,6 @@ export default function AddressSelectionScreen() {
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAddresses(list);
-      if (list.length && !selectedId) setSelectedId(list[0].id);
     });
     return () => unsub();
   }, [auth.currentUser]);
@@ -74,17 +75,7 @@ export default function AddressSelectionScreen() {
 
   return (
     <View style={styles.container}>
-      {/* --- HEADER --- */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Address Selection</Text>
-        <Ionicons name="location-sharp" size={24} color="white" />
-      </View>
+      <AppHeader showBackButton={true} title="Select Address" />
 
       {/* --- MAP PLACEHOLDER --- */}
       <View style={styles.mapPlaceholder}>
@@ -101,49 +92,55 @@ export default function AddressSelectionScreen() {
           <Text style={{ color: '#888', textAlign: 'center', marginTop: 30 }}>No saved addresses found</Text>
         ) : (
           addresses.map((addr) => (
-            <View
+            <TouchableOpacity
               key={addr.id}
-              style={[
-                styles.addressCard,
-                selectedId === addr.id && styles.selectedCard,
-              ]}
+              onPress={() => {
+                setAddress(addr);
+                router.back();
+              }}
+              activeOpacity={0.85}
             >
-              <View style={styles.iconContainer}>
-                <Ionicons
-                  name={getIcon(addr.type) as any}
-                  size={24}
-                  color="#007AFF"
-                />
-              </View>
-              <View style={styles.addressInfo}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                  <Text style={styles.addressLabel}>{addr.label}</Text>
-                  {addr.isDefault && (
-                    <View style={styles.defaultBadge}>
-                      <Text style={styles.defaultBadgeText}>Default</Text>
-                    </View>
+              <View
+                style={[
+                  styles.addressCard,
+                  selectedAddress?.id === addr.id && styles.selectedCard,
+                ]}
+              >
+                <View style={styles.iconContainer}>
+                  <Ionicons
+                    name={getIcon(addr.type) as any}
+                    size={24}
+                    color="#007AFF"
+                  />
+                </View>
+                <View style={styles.addressInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                    <Text style={styles.addressLabel}>{addr.label}</Text>
+                    {addr.isDefault && (
+                      <View style={styles.defaultBadge}>
+                        <Text style={styles.defaultBadgeText}>Default</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.addressText}>{addr.fullAddress || addr.address}</Text>
+                  {!addr.isDefault && (
+                    <TouchableOpacity onPress={() => handleSetDefault(addr.id)}>
+                      <Text style={styles.setDefaultText}>Set Default</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
-                <Text style={styles.addressText}>{addr.fullAddress || addr.address}</Text>
-                {!addr.isDefault && (
-                  <TouchableOpacity onPress={() => handleSetDefault(addr.id)}>
-                    <Text style={styles.setDefaultText}>Set Default</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => setSelectedId(addr.id)}>
-                  {selectedId === addr.id ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {selectedAddress?.id === addr.id ? (
                     <Ionicons name="checkmark-circle" size={24} color="#34C759" />
                   ) : (
                     <Ionicons name="ellipse-outline" size={24} color="#ccc" />
                   )}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(addr.id)} style={{ marginLeft: 10 }}>
-                  <Ionicons name="trash" size={22} color="#FF3B30" />
-                </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDelete(addr.id)} style={{ marginLeft: 10 }}>
+                    <Ionicons name="trash" size={22} color="#FF3B30" />
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>

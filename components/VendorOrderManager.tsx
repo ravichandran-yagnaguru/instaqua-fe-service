@@ -91,7 +91,7 @@ export default function VendorOrderManager({
     <View style={styles.card}>
       <Text style={styles.title}>{item.customer?.name || "Customer"}</Text>
       <Text>Items: {item.items?.map((i: any) => i.name).join(", ")}</Text>
-      <Text>Total: ₹{item.totalPrice}</Text>
+      <Text>Total: ₹{item.pricing?.totalAmount ?? item.totalAmount ?? 0}</Text>
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.button, styles.green]}

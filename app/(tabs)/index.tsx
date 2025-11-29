@@ -4,11 +4,13 @@ import { db, auth } from '@/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { collection, endAt, getDocs, orderBy, query, startAt, where, addDoc, setDoc, doc } from 'firebase/firestore';
+import { useRouter } from 'expo-router';
+import { collection, endAt, getDocs, orderBy, query, startAt, where, addDoc, setDoc, doc, writeBatch } from 'firebase/firestore';
 import * as geofire from 'geofire-common';
-import React, { useEffect, useState, useCallback } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { useAddress } from '@/contexts/AddressContext';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import AppHeader from '@/components/AppHeader';
 
   // Helper to get vendor closing time (robust)
   const getCloseTime = (vendor: any) => {
@@ -30,92 +32,24 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacit
     }
   };
 
+
 export default function HomeScreen() {
   const router = useRouter();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentAddress, setCurrentAddress] = useState<string>("Locating...");
+  const [refreshing, setRefreshing] = useState(false);
+  const { selectedAddress } = useAddress();
 
-  // Fetch default address for logged-in user
-  const fetchDefaultAddress = useCallback(async () => {
-    if (!auth.currentUser) {
-      setCurrentAddress("Select Location ▾");
-      return;
-    }
-    try {
-      const uid = auth.currentUser.uid;
-      const q = query(
-        collection(db, `users/${uid}/addresses`),
-        where('isDefault', '==', true)
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const doc = snap.docs[0];
-        setCurrentAddress(doc.data().fullAddress || "Select Location ▾");
-      } else {
-        setCurrentAddress("Select Location ▾");
-      }
-    } catch {
-      setCurrentAddress("Select Location ▾");
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchDefaultAddress();
-    }, [fetchDefaultAddress])
-  );
-  // Removed unused coords state
-
-  useEffect(() => {
+  // Pull-to-refresh handler: get current location and reload vendors
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
     (async () => {
-      // 1. Check for logged-in user and fetch default address
-      if (auth.currentUser) {
-        try {
-          const uid = auth.currentUser.uid;
-          const q = query(
-            collection(db, `users/${uid}/addresses`),
-            where('isDefault', '==', true)
-          );
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            const doc = snap.docs[0];
-            setCurrentAddress(doc.data().label || null);
-          } else {
-            setCurrentAddress("Select Location ▾");
-          }
-        } catch {
-          setCurrentAddress("Select Location ▾");
-        }
-      } else {
-        // Fallback to GPS location if not logged in
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setCurrentAddress("Permission Denied");
-          setLoading(false);
-          return;
-        }
-        let location = await Location.getCurrentPositionAsync({});
-        // setCoords(location.coords); // removed unused
-        let reversed = await Location.reverseGeocodeAsync({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude
-        });
-        if (reversed.length > 0) {
-          setCurrentAddress(`${reversed[0].street}, ${reversed[0].city}`);
-        }
-        // Also fetch vendors for guests
-        await fetchNearbyVendors(location.coords.latitude, location.coords.longitude);
-        return;
-      }
-      // 2. If we have a user, still get their location for vendor search
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLoading(false);
+        setRefreshing(false);
         return;
       }
       let location = await Location.getCurrentPositionAsync({});
-      // setCoords(location.coords); // removed unused
       await fetchNearbyVendors(location.coords.latitude, location.coords.longitude);
     })();
   }, []);
@@ -171,11 +105,16 @@ export default function HomeScreen() {
       console.error(error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   // --- FIX 2: QUICK ORDER LOGIC ---
   const handleQuickOrder = () => {
+    if (!selectedAddress) {
+      Alert.alert("No Address", "Please select a delivery location");
+      return;
+    }
     if (vendors.length > 0) {
       // Automatically pick the first (nearest) vendor
       const nearest = vendors[0];
@@ -187,67 +126,22 @@ export default function HomeScreen() {
 
 
 
+
+  // Re-fetch vendors when selectedAddress changes
+  useEffect(() => {
+    if (selectedAddress && selectedAddress.coordinates) {
+      fetchNearbyVendors(selectedAddress.coordinates.latitude, selectedAddress.coordinates.longitude);
+    }
+  }, [selectedAddress]);
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Instaqua</Text>
-          <View style={styles.headerIcons}>
-            <TouchableOpacity onPress={() => router.push('/customer/profile')} style={styles.iconButton}>
-              <Ionicons name="person-circle" size={28} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={async () => {
-                Alert.alert(
-                  'Logout',
-                  'Are you sure you want to log out?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Logout',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await signOut(auth);
-                          router.replace('/auth/login');
-                        } catch (e) {
-                          Alert.alert('Error', 'Logout failed.');
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons name="log-out-outline" size={26} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.headerWelcome}>
-          {/* Greeting with user's email prefix */}
-          <Text style={styles.welcomeTitle}>
-            {(() => {
-              const userEmail = auth.currentUser?.email;
-              return userEmail ? `Hi, ${userEmail.split('@')[0]}` : 'Hi, User';
-            })()}
-          </Text>
-          {currentAddress === "Select Location ▾" ? (
-            <TouchableOpacity
-              style={styles.addAddressPill}
-              onPress={() => router.push('/address/add')}
-            >
-              <Text style={styles.addAddressPillText}>+ Add Address</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={() => router.push('/address/selection')}>
-              <Text style={styles.welcomeSubtitle}>{currentAddress}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <AppHeader />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {/* Quick Order Button */}
         <TouchableOpacity style={styles.quickOrderCard} onPress={handleQuickOrder}>
           <View style={styles.quickOrderIcon}>
@@ -279,7 +173,7 @@ export default function HomeScreen() {
               <View style={styles.vendorInfo}>
                 <View style={styles.vendorHeaderRow}>
                   <Text style={styles.vendorName}>{vendor.businessName}</Text>
-                  <Text style={styles.vendorDistance}>{vendor.distance.toFixed(1)} km</Text> 
+                  <Text style={styles.vendorDistance}>{vendor.distance ? vendor.distance.toFixed(1) + ' km' : '...'}</Text>
                 </View>
                 
                 <View style={styles.vendorDetailsRow}>
@@ -419,7 +313,6 @@ const styles = StyleSheet.create({
 });
 
 // --- STRICT SCHEMA SEEDING FUNCTION ---
-import { writeBatch } from 'firebase/firestore';
 
 async function seedDatabase() {
   try {
@@ -443,7 +336,7 @@ async function seedDatabase() {
       },
     ];
     const batch = writeBatch(db);
-    for (const [i, v] of vendors.entries()) {
+    for (const v of vendors) {
       const lat = center[0] + v.offset[0];
       const lng = center[1] + v.offset[1];
       const geohash = geofire.geohashForLocation([lat, lng]);
@@ -454,6 +347,7 @@ async function seedDatabase() {
         isOnline: true,
         rating: 5,
         inventoryCount: 3,
+        serviceRadiusKm: 15,
         activeHours: {
           start: new Date(2025, 0, 1, 8, 0, 0),
           end: new Date(2025, 0, 1, 22, 0, 0),
