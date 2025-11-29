@@ -34,24 +34,42 @@ const AppHeader: React.FC<AppHeaderProps> = ({ showBackButton = false, title, su
       <View style={styles.topRow}>
         <View style={styles.leftRow}>
           {showBackButton && (
-            <TouchableOpacity onPress={handleBack} style={{ marginRight: 10 }}>
+            <TouchableOpacity
+              onPress={handleBack}
+              style={{ marginRight: 10 }}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+            >
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
           )}
           <Text style={styles.brand}>Instaqua</Text>
         </View>
         <View style={styles.rightRow}>
-          <TouchableOpacity onPress={handleProfile} style={styles.iconCircle}>
+          <TouchableOpacity
+            onPress={() => router.push('/customer/history')}
+            style={styles.iconCircle}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <Ionicons name="time-outline" size={24} color="#007AFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleProfile}
+            style={styles.iconCircle}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
             <Ionicons name="person" size={20} color="#007AFF" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconCircle}>
+          <TouchableOpacity
+            onPress={handleLogout}
+            style={styles.iconCircle}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
             <Ionicons name="exit-outline" size={20} color="#007AFF" />
           </TouchableOpacity>
         </View>
       </View>
       {/* Middle Row: Greeting */}
       <Text style={styles.greeting}>{title || `Hi, ${name}`}</Text>
-
     </View>
   );
 };
@@ -59,9 +77,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ showBackButton = false, title, su
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#007AFF',
-    paddingTop: Platform.OS === 'android' ? 60 : 60,
+    paddingTop: Platform.OS === 'android' ? 80 : 100,
     paddingHorizontal: 20,
-    paddingBottom: 15,
+    paddingBottom: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
