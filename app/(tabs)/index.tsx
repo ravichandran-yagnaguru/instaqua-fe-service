@@ -109,20 +109,7 @@ export default function HomeScreen() {
     }
   };
 
-  // --- FIX 2: QUICK ORDER LOGIC ---
-  const handleQuickOrder = () => {
-    if (!selectedAddress) {
-      Alert.alert("No Address", "Please select a delivery location");
-      return;
-    }
-    if (vendors.length > 0) {
-      // Automatically pick the first (nearest) vendor
-      const nearest = vendors[0];
-      router.push({ pathname: '/vendor/[id]', params: { id: nearest.id } });
-    } else {
-      Alert.alert("No Vendors", "We couldn't find any vendors nearby.");
-    }
-  };
+
 
 
 
@@ -142,19 +129,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Quick Order Button */}
-        <TouchableOpacity style={styles.quickOrderCard} onPress={handleQuickOrder}>
-          <View style={styles.quickOrderIcon}>
-            <MaterialIcons name="flash-on" size={32} color="white" />
-          </View>
-          <View>
-            <Text style={styles.quickOrderText}>Quick Order</Text>
-            <Text style={{color:'rgba(255,255,255,0.8)', fontSize: 12}}>
-              From nearest store
-            </Text>
-          </View>
-        </TouchableOpacity>
-
         <Text style={styles.sectionTitle}>Nearest Vendors</Text>
 
         {loading ? (
@@ -237,19 +211,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   scrollContent: { padding: 20 },
-  quickOrderCard: {
-    backgroundColor: '#0056D2', 
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 25,
-    marginTop: -10,
-    shadowColor: '#000', shadowOffset: {width:0, height:4}, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5
-  },
-  quickOrderIcon: { marginRight: 10 },
-  quickOrderText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: '#333' },
   vendorCard: {
     backgroundColor: 'white',

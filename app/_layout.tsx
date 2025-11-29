@@ -8,6 +8,8 @@ import { auth } from '../firebaseConfig';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 
+
+import Toast from 'react-native-toast-message';
 import { AddressProvider } from '../contexts/AddressContext';
 
 
@@ -42,6 +44,7 @@ export default function RootLayout() {
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>
+      <Toast />
     </AddressProvider>
   );
 }

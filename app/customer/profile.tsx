@@ -129,13 +129,6 @@ export default function CustomerProfile() {
             <Text style={styles.actionBtnText}>Manage Addresses</Text>
           </TouchableOpacity>
 
-          {/* Order History Button */}
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/customer/history')}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <MaterialIcons name="history" size={22} color="#007AFF" style={{ marginRight: 8 }} />
-              <Text style={styles.actionBtnText}>Order History</Text>
-            </View>
-          </TouchableOpacity>
         </View>
       </View>
     </>
